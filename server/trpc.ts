@@ -119,8 +119,8 @@ const appRouter = router({
             fromClients.emit('connect', req.ctx.id);
             return () => {
                 console.log(`unsubscribe desired from ${req.ctx.id}`);
-                fromClients.emit('disconnect', req.ctx.id);
                 desiredReceivers.delete(req.ctx.id);
+                fromClients.emit('disconnect', req.ctx.id);
             };
         })),
 });

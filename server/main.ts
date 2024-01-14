@@ -205,6 +205,11 @@ fromClients.on('announce', (_id, reconnecting) => {
 fromClients.on('disconnect', id => {
     readyWhens.delete(id);
 
+    if (getViewers().length === 0) {
+        state = { mode: 'init' };
+        return;
+    }
+
     switch (state.mode) {
         case 'init':
         case 'paused':
