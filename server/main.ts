@@ -2,7 +2,7 @@
 
 import readline from 'readline';
 import { inspect } from 'util';
-import { broadcast, fromClients, getViewers, startServer, unicast } from './trpc';
+import { broadcast, fromClients, getViewers, notify, startServer, unicast } from './trpc';
 
 const epsilon = 0.1;
 
@@ -170,6 +170,8 @@ fromClients.on('connect', id => {
     }
 
     readyWhens.set(id, null);
+
+    notify(`Somebody joined, up to ${getViewers().length} viewers!`);
 });
 
 function pauseAndReportWhen() {
@@ -227,6 +229,8 @@ fromClients.on('disconnect', id => {
         default:
             return assertNever(state);
     }
+
+    notify(`Somebody left, down to ${getViewers().length} viewers.`);
 });
 
 function checkIfAllReady(currentState: WaitingForReadyState) {

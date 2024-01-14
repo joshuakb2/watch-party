@@ -13,20 +13,14 @@ import * as https from 'https';
 
 const version = readFileSync('../version').toString().trim();
 
-const playParser = z.object({ whatdo: z.literal('play') });
-const pauseAndReportWhen = z.object({ whatdo: z.literal('pauseAndReportWhen') });
-const pauseParser = z.object({
-    whatdo: z.literal('pause'),
-    when: z.number(),
-});
+type Desired = {
+    whatdo: 'play' | 'pauseAndReportWhen';
+} | {
+    whatdo: 'pause';
+    when: number;
+};
 
-const desiredParser = z.discriminatedUnion('whatdo', [
-    playParser,
-    pauseAndReportWhen,
-    pauseParser,
-]);
-
-type Desired = z.infer<typeof desiredParser>;
+type Notification = string;
 
 type EventsFromClients = {
     connect: (id: string) => void;
@@ -41,6 +35,7 @@ type EventsFromClients = {
 export const fromClients = new EventEmitter() as TypedEventEmitter<EventsFromClients>;
 
 const desiredReceivers = new Map<string, Observer<Desired, unknown>>();
+const notificationReceivers = new Map<string, Observer<Notification, unknown>>();
 
 export function getViewers() {
     return [...desiredReceivers.keys()];
@@ -57,6 +52,12 @@ export function broadcast(desired: Desired) {
     console.log(`Broadcasting ${inspect(desired)}`);
     for (const receiver of desiredReceivers.values()) {
         receiver.next(desired);
+    }
+}
+
+export function notify(notification: Notification) {
+    for (const receiver of notificationReceivers.values()) {
+        receiver.next(notification);
     }
 }
 
@@ -121,6 +122,15 @@ const appRouter = router({
                 console.log(`unsubscribe desired from ${req.ctx.id}`);
                 desiredReceivers.delete(req.ctx.id);
                 fromClients.emit('disconnect', req.ctx.id);
+            };
+        })),
+
+    notifications: t.procedure
+        .input(z.null())
+        .subscription(req => observable<Notification>(emit => {
+            notificationReceivers.set(req.ctx.id, emit);
+            return () => {
+                notificationReceivers.delete(req.ctx.id);
             };
         })),
 });

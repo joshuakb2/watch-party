@@ -92,6 +92,21 @@ videoEnabled.then(() => {
             }
         },
     });
+
+    if (!window.Notification) {
+        console.log(`This browser doesn't support Notifications :(`);
+    }
+    else {
+        if (Notification.permission === 'default') {
+            Notification.requestPermission();
+        }
+        trpc.notifications.subscribe(null, {
+            onData: notification => {
+                if (Notification.permission !== 'granted') return;
+                new Notification(notification);
+            },
+        });
+    }
 });
 
 video.oncanplay = () => {
