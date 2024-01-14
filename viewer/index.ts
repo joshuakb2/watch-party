@@ -33,7 +33,7 @@ let trpc_: undefined | ReturnType<typeof startTrpc>;
 function startTrpc() {
     return createTRPCProxyClient<AppRouter>({
         links: [wsLink({
-            client: createWSClient({ url: `${location.protocol === 'https' ? 'wss' : 'ws'}://${location.hostname}:13579/` }),
+            client: createWSClient({ url: `${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.hostname}:13579/` }),
         })]
     });
 }
