@@ -8,6 +8,8 @@ import EventEmitter from 'events';
 import crypto from 'crypto';
 import { readFileSync } from 'fs';
 import { inspect } from 'util';
+import * as http from 'http';
+import * as https from 'https';
 
 const version = readFileSync('../version').toString().trim();
 
@@ -126,7 +128,32 @@ const appRouter = router({
 export type AppRouter = typeof appRouter;
 
 export function startServer() {
-    const wss = new ws.WebSocketServer({ port: 13579 });
+    const host = '0.0.0.0';
+    const port = 13579;
+
+    let server: http.Server;
+    if (process.env.SSL_CERT || process.env.SSL_KEY) {
+        if (!process.env.SSL_CERT) {
+            console.error('FATAL: SSL_KEY variable found but SSL_CERT variable missing');
+            process.exit(1);
+        }
+        if (!process.env.SSL_KEY) {
+            console.error('FATAL: SSL_CERT variable found but SSL_KEY variable missing');
+            process.exit(1);
+        }
+
+        console.log(`Starting WSS server on ${host}:${port}`);
+        server = https.createServer({
+            cert: readFileSync(process.env.SSL_CERT),
+            key: readFileSync(process.env.SSL_KEY),
+        }).listen(port, host);
+    }
+    else {
+        console.log(`Starting WS server on ${host}:${port}`);
+        server = http.createServer().listen(port, host);
+    }
+
+    const wss = new ws.WebSocketServer({ server });
     const handler = applyWSSHandler({ wss, router: appRouter, createContext })
 
     process.on('SIGTERM', () => {
