@@ -1,5 +1,6 @@
 import { createTRPCProxyClient, createWSClient, wsLink } from '@trpc/client';
 import type { AppRouter } from '../server/trpc';
+import type { Unsubscribable } from '@trpc/server/observable';
 
 const isSafari = navigator.vendor && navigator.vendor.indexOf('Apple') > -1 &&
     navigator.userAgent &&
@@ -49,7 +50,9 @@ videoEnabled.then(({ clientName }) => {
 
     const trpc = trpc_ = startTrpc();
 
-    trpc.desired.subscribe(null, {
+    const subscriptions: Unsubscribable[] = [];
+
+    const desiredSubscription = trpc.desired.subscribe(null, {
         onStarted: () => {
             trpc.announce.mutate({
                 name: clientName,
@@ -91,6 +94,14 @@ videoEnabled.then(({ clientName }) => {
                     trpc.reportWhen.mutate({ when: video.currentTime });
                     break;
 
+                case 'gtfo':
+                    for (const sub of subscriptions) {
+                        sub.unsubscribe();
+                    }
+                    subscriptions.splice(0);
+                    alert('You have been kicked!');
+                    break;
+
                 default: {
                     const never: never = msg;
                     void never;
@@ -100,6 +111,8 @@ videoEnabled.then(({ clientName }) => {
         },
     });
 
+    subscriptions.push(desiredSubscription);
+
     if (!window.Notification) {
         console.log(`This browser doesn't support Notifications :(`);
     }
@@ -107,12 +120,14 @@ videoEnabled.then(({ clientName }) => {
         if (Notification.permission === 'default') {
             Notification.requestPermission();
         }
-        trpc.notifications.subscribe(null, {
+        const notificationSubscription = trpc.notifications.subscribe(null, {
             onData: notification => {
                 if (Notification.permission !== 'granted') return;
                 new Notification(notification);
             },
         });
+
+        subscriptions.push(notificationSubscription);
     }
 });
 

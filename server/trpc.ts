@@ -18,6 +18,8 @@ type Desired = {
 } | {
     whatdo: 'pause';
     when: number;
+} | {
+    whatdo: 'gtfo';
 };
 
 type Notification = string;

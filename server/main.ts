@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 
+import '@total-typescript/ts-reset/filter-boolean';
 import readline from 'readline';
 import { inspect } from 'util';
 import { broadcast, fromClients, getViewers, notify, startServer, unicast } from './trpc';
@@ -43,6 +44,7 @@ const commands = new Map<string, (cli: readline.Interface, ...args: (string | un
     ['pause', cliPause],
     ['say', cliSay],
     ['rewind <seconds>', cliRewind],
+    ['kick', cliKick],
     ['exit', quit],
     ['quit', quit],
 ]);
@@ -54,6 +56,7 @@ const helpInfo = new Map([
     ['rewind <when>', 'Rewind the video <when> seconds'],
     ['say [...words]', 'Send a notification to all viewers'],
     ['status', 'Show how many viewers are connected.'],
+    ['kick ([...ids] | everyone)', 'Kick one or all viewers'],
     ['exit', 'Stop the server'],
 ]);
 
@@ -138,6 +141,16 @@ function cliRewind(cli: readline.Interface, secondsStr?: string) {
         default:
             return assertNever(state);
     }
+}
+
+function cliKick(cli: readline.Interface, ...who: (undefined | string)[]) {
+    if (who.length === 1 && who[0] === 'everyone') {
+        broadcast({ whatdo: 'gtfo' });
+        cli.write(`Kicked everyone.`);
+    }
+
+    const ids = who.filter(Boolean);
+    for (const id of ids) unicast(id, { whatdo: 'gtfo' });
 }
 
 function quit() {
