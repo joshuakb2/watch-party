@@ -136,7 +136,7 @@ window.enablePlayer = () => {
         enableButton.style.display = 'none';
     }
 
-    const oldClientName = localStorage.get('watch_party_client_name');
+    const oldClientName = localStorage.getItem('watch_party_client_name');
     let clientName: string | undefined;
 
     if (oldClientName) {
@@ -154,6 +154,7 @@ window.enablePlayer = () => {
         clientName = newName;
     }
 
+    localStorage.setItem('watch_party_client_name', clientName);
     const args = { clientName };
     setTimeout(() => onVideoEnabled?.(args), 0);
 };
