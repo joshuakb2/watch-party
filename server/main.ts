@@ -42,6 +42,7 @@ const commands = new Map<string, (cli: readline.Interface, ...args: (string | un
     ['play', cliPlay],
     ['pause', cliPause],
     ['say', cliSay],
+    ['rewind <seconds>', cliRewind],
     ['exit', quit],
     ['quit', quit],
 ]);
@@ -50,6 +51,7 @@ const helpInfo = new Map([
     ['help', 'Display this help message'],
     ['play', 'Start playing video'],
     ['pause [when]', 'Pause the video and optionally seeks to the specified number of seconds'],
+    ['rewind <when>', 'Rewind the video <when> seconds'],
     ['say [...words]', 'Send a notification to all viewers'],
     ['status', 'Show how many viewers are connected.'],
     ['exit', 'Stop the server'],
@@ -104,6 +106,38 @@ function cliPause(cli: readline.Interface, whenStr?: string) {
 
 function cliSay(_cli: readline.Interface, ...words: (string | undefined)[]) {
     notify(words.filter(Boolean).join(' '));
+}
+
+function cliRewind(cli: readline.Interface, secondsStr?: string) {
+    if (!secondsStr) {
+        cli.write(`You must provide a number of seconds to rewind.\n`);
+        return;
+    }
+
+    const seconds = +secondsStr;
+
+    if (isNaN(seconds)) {
+        cli.write(`Invalid number given.\n`);
+        return;
+    }
+
+    switch (state.mode) {
+        case 'paused':
+        case 'waitingForReady':
+            const newWhen = state.when - seconds;
+            cli.write(`Rewinding to ${newWhen}\n`);
+            pauseAt(newWhen);
+            break;
+
+        case 'init':
+        case 'waitingForWhenReports':
+        case 'playing':
+            cli.write(`Cannot rewind from state = ${state.mode}\n`);
+            break;
+
+        default:
+            return assertNever(state);
+    }
 }
 
 function quit() {
