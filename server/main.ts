@@ -3,7 +3,7 @@
 import '@total-typescript/ts-reset/filter-boolean';
 import readline from 'readline';
 import { inspect } from 'util';
-import { broadcast, fromClients, getViewers, notify, startServer, unicast } from './trpc';
+import { broadcast, fromClients, getViewers, kick, notify, startServer, unicast } from './trpc';
 
 const epsilon = 0.1;
 
@@ -145,13 +145,13 @@ function cliRewind(cli: readline.Interface, secondsStr?: string) {
 
 function cliKick(cli: readline.Interface, ...who: (undefined | string)[]) {
     if (who.length === 1 && who[0] === 'everyone') {
-        broadcast({ whatdo: 'gtfo' });
+        kick('everyone')
         cli.write(`Kicked everyone.\n`);
     }
 
     const ids = who.filter(Boolean);
     if (ids.length > 0) {
-        for (const id of ids) unicast(id, { whatdo: 'gtfo' });
+        kick(ids);
         cli.write(`Kicked ${ids.join(', ')}\n`);
     }
 }

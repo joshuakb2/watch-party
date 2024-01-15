@@ -36,7 +36,10 @@ type EventsFromClients = {
 
 export const fromClients = new EventEmitter() as TypedEventEmitter<EventsFromClients>;
 
-const desiredReceivers = new Map<string, Observer<Desired, unknown>>();
+const desiredReceivers = new Map<string, {
+    ws: ws.WebSocket;
+    observer: Observer<Desired, unknown>;
+}>();
 const notificationReceivers = new Map<string, Observer<Notification, unknown>>();
 
 export function getViewers() {
@@ -44,22 +47,41 @@ export function getViewers() {
 }
 
 export function unicast(id: string, desired: Desired) {
-    const receiver = desiredReceivers.get(id);
-    if (!receiver) return;
+    const { observer } = desiredReceivers.get(id) ?? {};
+    if (!observer) return;
     console.log(`Sending ${inspect(desired)} to ${id}`);
-    receiver.next(desired);
+    observer.next(desired);
 }
 
 export function broadcast(desired: Desired) {
     console.log(`Broadcasting ${inspect(desired)}`);
-    for (const receiver of desiredReceivers.values()) {
-        receiver.next(desired);
+    for (const { observer } of desiredReceivers.values()) {
+        observer.next(desired);
     }
 }
 
 export function notify(notification: Notification) {
-    for (const receiver of notificationReceivers.values()) {
-        receiver.next(notification);
+    for (const observer of notificationReceivers.values()) {
+        observer.next(notification);
+    }
+}
+
+export function kick(who: 'everyone' | string[]) {
+    const msg = { whatdo: 'gtfo' } as const;
+
+    if (who === 'everyone') {
+        broadcast(msg);
+        for (const { ws } of desiredReceivers.values()) {
+            ws.close();
+        }
+    }
+    else {
+        for (const id of who) {
+            unicast(id, msg);
+            const { ws } = desiredReceivers.get(id) ?? {};
+            if (!ws) continue;
+            ws.close();
+        }
     }
 }
 
@@ -133,9 +155,9 @@ const appRouter = router({
 
     desired: t.procedure
         .input(z.null())
-        .subscription(req => observable<Desired>(emit => {
+        .subscription(req => observable<Desired>(observer => {
             console.log(`subscribe desired from ${req.ctx.shown}`);
-            desiredReceivers.set(req.ctx.id, emit);
+            desiredReceivers.set(req.ctx.id, { ws: req.ctx.ws, observer });
             fromClients.emit('connect', req.ctx);
             return () => {
                 console.log(`unsubscribe desired from ${req.ctx.shown}`);
