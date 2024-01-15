@@ -42,7 +42,7 @@ const desiredReceivers = new Map<ClientContext, {
 const notificationReceivers = new Map<ClientContext, Observer<Notification, unknown>>();
 
 export function getViewers() {
-    return [...desiredReceivers.keys()];
+    return [...desiredReceivers.keys()].map(x => x.id);
 }
 
 export function unicast(ctx: ClientContext, desired: Desired) {
