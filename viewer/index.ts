@@ -156,7 +156,7 @@ window.enablePlayer = () => {
     let clientName: string | undefined;
 
     if (oldClientName) {
-        const yes = confirm(`Would you still list to be called ${oldClientName}?`);
+        const yes = confirm(`Would you still like to be called ${oldClientName}?`);
         if (yes) {
             clientName = oldClientName;
         }
