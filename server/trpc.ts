@@ -23,13 +23,13 @@ type Desired = {
 type Notification = string;
 
 type EventsFromClients = {
-    connect: (id: string) => void;
-    announce: (id: string, reconnecting: null | { when: number }) => void;
-    disconnect: (id: string) => void;
+    connect: (ctx: ClientContext) => void;
+    announce: (ctx: ClientContext, reconnecting: null | { when: number }) => void;
+    disconnect: (ctx: ClientContext) => void;
     play: () => void;
     pause: (when: number) => void;
-    reportReady: (id: string, when: number) => void;
-    reportWhen: (id: string, when: number) => void;
+    reportReady: (ctx: ClientContext, when: number) => void;
+    reportWhen: (ctx: ClientContext, when: number) => void;
 };
 
 export const fromClients = new EventEmitter() as TypedEventEmitter<EventsFromClients>;
@@ -64,10 +64,25 @@ export function notify(notification: Notification) {
 const createContext = async (opts: CreateWSSContextFnOptions) => {
     const ws = opts.res;
     const id = crypto.randomUUID();
+    const name = null as null | string;
     console.log(`${id} joins the party`);
     opts.res.once('close', () => console.log(`${id} left the party`));
-    return { id, ws };
+    return {
+        id,
+        ws,
+        name,
+        get shown() {
+            if (this.name) {
+                return `${this.name} (${this.id})`;
+            }
+            else {
+                return this.id;
+            }
+        },
+    };
 };
+
+export type ClientContext = Awaited<ReturnType<typeof createContext>>;
 
 const t = initTRPC.context<typeof createContext>().create();
 const router = t.router;
@@ -75,53 +90,55 @@ const router = t.router;
 const appRouter = router({
     announce: t.procedure
         .input(z.object({
+            name: z.string(),
             reconnecting: z.object({ when: z.number() }).nullable(),
         }))
         .output(z.object({ version: z.string() }))
         .mutation(req => {
-            console.log(`announce from ${req.ctx.id}`);
-            fromClients.emit('announce', req.ctx.id, req.input.reconnecting);
+            req.ctx.name = req.input.name;
+            console.log(`announce from ${req.ctx.id}: name = ${req.input.name}, reconnecting = ${inspect(req.input.reconnecting)}`);
+            fromClients.emit('announce', req.ctx, req.input.reconnecting);
             return { version };
         }),
 
     play: t.procedure
         .input(z.null())
         .mutation(req => {
-            console.log(`play from ${req.ctx.id}`);
+            console.log(`play from ${req.ctx.shown}`);
             fromClients.emit('play');
         }),
 
     pause: t.procedure
         .input(z.object({ when: z.number() }))
         .mutation(req => {
-            console.log(`pause at ${req.input.when} from ${req.ctx.id}`);
+            console.log(`pause at ${req.input.when} from ${req.ctx.shown}`);
             fromClients.emit('pause', req.input.when);
         }),
 
     ready: t.procedure
         .input(z.object({ when: z.number() }))
         .mutation(req => {
-            console.log(`ready at ${req.input.when} from ${req.ctx.id}`);
-            fromClients.emit('reportReady', req.ctx.id, req.input.when);
+            console.log(`ready at ${req.input.when} from ${req.ctx.shown}`);
+            fromClients.emit('reportReady', req.ctx, req.input.when);
         }),
 
     reportWhen: t.procedure
         .input(z.object({ when: z.number() }))
         .mutation(req => {
-            console.log(`reportWhen at ${req.input.when} from ${req.ctx.id}`);
-            fromClients.emit('reportWhen', req.ctx.id, req.input.when);
+            console.log(`reportWhen at ${req.input.when} from ${req.ctx.shown}`);
+            fromClients.emit('reportWhen', req.ctx, req.input.when);
         }),
 
     desired: t.procedure
         .input(z.null())
         .subscription(req => observable<Desired>(emit => {
-            console.log(`subscribe desired from ${req.ctx.id}`);
+            console.log(`subscribe desired from ${req.ctx.shown}`);
             desiredReceivers.set(req.ctx.id, emit);
-            fromClients.emit('connect', req.ctx.id);
+            fromClients.emit('connect', req.ctx);
             return () => {
-                console.log(`unsubscribe desired from ${req.ctx.id}`);
+                console.log(`unsubscribe desired from ${req.ctx.shown}`);
                 desiredReceivers.delete(req.ctx.id);
-                fromClients.emit('disconnect', req.ctx.id);
+                fromClients.emit('disconnect', req.ctx);
             };
         })),
 

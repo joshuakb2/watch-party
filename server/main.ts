@@ -179,7 +179,7 @@ type ServerState =
 
 let state: ServerState = { mode: 'init' };
 
-fromClients.on('connect', id => {
+fromClients.on('connect', ({ id }) => {
     switch (state.mode) {
         case 'init':
             break;
@@ -223,7 +223,7 @@ function pauseAndReportWhen() {
     };
 }
 
-fromClients.on('announce', (_id, reconnecting) => {
+fromClients.on('announce', ({ name }, reconnecting) => {
     switch (state.mode) {
         case 'init':
             state = {
@@ -242,9 +242,11 @@ fromClients.on('announce', (_id, reconnecting) => {
         default:
             return assertNever(state);
     }
+
+    notify(`Welcome to the party, ${name}!`);
 });
 
-fromClients.on('disconnect', id => {
+fromClients.on('disconnect', ({ id, name }) => {
     readyWhens.delete(id);
 
     if (getViewers().length === 0) {
@@ -270,7 +272,7 @@ fromClients.on('disconnect', id => {
             return assertNever(state);
     }
 
-    notify(`Somebody left, down to ${getViewers().length} viewers.`);
+    notify(`${name ?? 'Somebody'} left, down to ${getViewers().length} viewers.`);
 });
 
 function checkIfAllReady(currentState: WaitingForReadyState) {
@@ -355,7 +357,7 @@ function pauseAt(when: number) {
     broadcast({ whatdo: 'pause', when });
 }
 
-fromClients.on('reportReady', (id, when) => {
+fromClients.on('reportReady', ({ id }, when) => {
     readyWhens.set(id, when);
 
     switch (state.mode) {
@@ -379,7 +381,7 @@ fromClients.on('reportReady', (id, when) => {
     }
 });
 
-fromClients.on('reportWhen', (id, when) => {
+fromClients.on('reportWhen', ({ id }, when) => {
     switch (state.mode) {
         case 'waitingForWhenReports':
             state.whenReports.set(id, when);

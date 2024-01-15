@@ -26,8 +26,14 @@ const version = '_$VERSION$_';
 
 const raise = (error: Error) => { throw error; };
 const video = document.querySelector('video') ?? raise(new Error('no video?'));
-let onVideoEnabled: (() => void) | undefined;
-const videoEnabled = new Promise<void>(resolve => onVideoEnabled = resolve);
+
+type VideoEnabledArgs = {
+    clientName: string;
+};
+
+let onVideoEnabled: ((args: VideoEnabledArgs) => void) | undefined;
+const videoEnabled = new Promise<VideoEnabledArgs>(resolve => onVideoEnabled = resolve);
+
 let trpc_: undefined | ReturnType<typeof startTrpc>;
 
 function startTrpc() {
@@ -38,7 +44,7 @@ function startTrpc() {
     });
 }
 
-videoEnabled.then(() => {
+videoEnabled.then(({ clientName }) => {
     let wasToldWhatDo = false;
 
     const trpc = trpc_ = startTrpc();
@@ -46,6 +52,7 @@ videoEnabled.then(() => {
     trpc.desired.subscribe(null, {
         onStarted: () => {
             trpc.announce.mutate({
+                name: clientName,
                 reconnecting: wasToldWhatDo ? { when: video.currentTime } : null,
             }).then(({ version: serverVersion }) => {
                 if (version !== serverVersion) {
@@ -128,5 +135,25 @@ window.enablePlayer = () => {
     if (enableButton instanceof HTMLButtonElement) {
         enableButton.style.display = 'none';
     }
-    setTimeout(() => onVideoEnabled?.(), 0);
+
+    const oldClientName = localStorage.get('watch_party_client_name');
+    let clientName: string | undefined;
+
+    if (oldClientName) {
+        const yes = confirm(`Would you still list to be called ${oldClientName}?`);
+        if (yes) {
+            clientName = oldClientName;
+        }
+    }
+
+    if (!clientName) {
+        let newName = prompt('What should we call you?');
+        while (!newName) {
+            newName = prompt('Sorry, please try again. Who are you?!?');
+        }
+        clientName = newName;
+    }
+
+    const args = { clientName };
+    setTimeout(() => onVideoEnabled?.(args), 0);
 };
