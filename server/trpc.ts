@@ -25,9 +25,8 @@ type Desired = {
 type Notification = string;
 
 type EventsFromClients = {
-    connect: (ctx: ClientContext) => void;
-    announce: (ctx: ClientContext, reconnecting: null | { when: number }) => void;
-    disconnect: (ctx: ClientContext) => void;
+    join: (ctx: ClientContext, reconnecting: null | { when: number }) => void;
+    leave: (ctx: ClientContext) => void;
     play: () => void;
     pause: (when: number) => void;
     reportReady: (ctx: ClientContext, when: number) => void;
@@ -36,52 +35,54 @@ type EventsFromClients = {
 
 export const fromClients = new EventEmitter() as TypedEventEmitter<EventsFromClients>;
 
-const desiredReceivers = new Map<string, {
+const desiredReceivers = new Map<ClientContext, {
     ws: ws.WebSocket;
     observer: Observer<Desired, unknown>;
 }>();
-const notificationReceivers = new Map<string, Observer<Notification, unknown>>();
+const notificationReceivers = new Map<ClientContext, Observer<Notification, unknown>>();
 
 export function getViewers() {
     return [...desiredReceivers.keys()];
 }
 
-export function unicast(id: string, desired: Desired) {
-    const { observer } = desiredReceivers.get(id) ?? {};
+export function unicast(ctx: ClientContext, desired: Desired) {
+    const { observer } = [...desiredReceivers].find(([x]) => x === ctx)?.[1] ?? {};
     if (!observer) return;
-    console.log(`Sending ${inspect(desired)} to ${id}`);
+    console.log(`Sending ${inspect(desired)} to ${ctx.shown}`);
     observer.next(desired);
 }
 
 export function broadcast(desired: Desired) {
     console.log(`Broadcasting ${inspect(desired)}`);
-    for (const { observer } of desiredReceivers.values()) {
-        observer.next(desired);
+    for (const [ctx, { observer }] of desiredReceivers) {
+        if (ctx.name) {
+            observer.next(desired);
+        }
     }
 }
 
 export function notify(notification: Notification) {
-    for (const observer of notificationReceivers.values()) {
-        observer.next(notification);
+    for (const [ctx, observer] of notificationReceivers) {
+        if (ctx.name) {
+            observer.next(notification);
+        }
     }
 }
 
 export function kick(who: 'everyone' | string[]) {
     const msg = { whatdo: 'gtfo' } as const;
 
-    if (who === 'everyone') {
-        broadcast(msg);
-        for (const { ws } of desiredReceivers.values()) {
-            ws.close();
-        }
-    }
-    else {
-        for (const id of who) {
-            unicast(id, msg);
-            const { ws } = desiredReceivers.get(id) ?? {};
-            if (!ws) continue;
-            ws.close();
-        }
+    const ctxs = who === 'everyone'
+        ? [...desiredReceivers.keys()]
+        : [...desiredReceivers.keys()].filter(x => who.some(id => x.id === id));
+
+    for (const ctx of ctxs) {
+        unicast(ctx, msg);
+
+        const { ws } = desiredReceivers.get(ctx) ?? {};
+        if (!ws) continue;
+
+        ws.close();
     }
 }
 
@@ -121,7 +122,7 @@ const appRouter = router({
         .mutation(req => {
             req.ctx.name = req.input.name;
             console.log(`announce from ${req.ctx.id}: name = ${req.input.name}, reconnecting = ${inspect(req.input.reconnecting)}`);
-            fromClients.emit('announce', req.ctx, req.input.reconnecting);
+            fromClients.emit('join', req.ctx, req.input.reconnecting);
             return { version };
         }),
 
@@ -157,21 +158,23 @@ const appRouter = router({
         .input(z.null())
         .subscription(req => observable<Desired>(observer => {
             console.log(`subscribe desired from ${req.ctx.shown}`);
-            desiredReceivers.set(req.ctx.id, { ws: req.ctx.ws, observer });
-            fromClients.emit('connect', req.ctx);
+            desiredReceivers.set(req.ctx, { ws: req.ctx.ws, observer });
             return () => {
                 console.log(`unsubscribe desired from ${req.ctx.shown}`);
-                desiredReceivers.delete(req.ctx.id);
-                fromClients.emit('disconnect', req.ctx);
+                desiredReceivers.delete(req.ctx);
+
+                if (req.ctx.name) {
+                    fromClients.emit('leave', req.ctx);
+                }
             };
         })),
 
     notifications: t.procedure
         .input(z.null())
         .subscription(req => observable<Notification>(emit => {
-            notificationReceivers.set(req.ctx.id, emit);
+            notificationReceivers.set(req.ctx, emit);
             return () => {
-                notificationReceivers.delete(req.ctx.id);
+                notificationReceivers.delete(req.ctx);
             };
         })),
 });

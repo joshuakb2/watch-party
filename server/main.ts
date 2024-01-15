@@ -195,41 +195,6 @@ type ServerState =
 
 let state: ServerState = { mode: 'init' };
 
-fromClients.on('connect', ({ id }) => {
-    switch (state.mode) {
-        case 'init':
-            break;
-
-        case 'paused':
-            console.log(`${id} has connected, we are paused at ${state.when}`);
-            unicast(id, { whatdo: 'pause', when: state.when });
-            state = {
-                mode: 'waitingForReady',
-                when: state.when,
-            };
-            break;
-
-        case 'waitingForReady':
-            unicast(id, { whatdo: 'pause', when: state.when });
-            break;
-
-        case 'waitingForWhenReports':
-            unicast(id, { whatdo: 'pause', when: 0 });
-            break;
-
-        case 'playing':
-            pauseAndReportWhen();
-            break;
-
-        default:
-            return assertNever(state);
-    }
-
-    readyWhens.set(id, null);
-
-    notify(`Somebody joined, up to ${getViewers().length} viewers!`);
-});
-
 function pauseAndReportWhen() {
     broadcast({ whatdo: 'pauseAndReportWhen' });
     state = {
@@ -239,7 +204,9 @@ function pauseAndReportWhen() {
     };
 }
 
-fromClients.on('announce', ({ name }, reconnecting) => {
+fromClients.on('join', (ctx, reconnecting) => {
+    readyWhens.set(ctx.id, null);
+
     switch (state.mode) {
         case 'init':
             state = {
@@ -250,19 +217,33 @@ fromClients.on('announce', ({ name }, reconnecting) => {
             break;
 
         case 'paused':
+            unicast(ctx, { whatdo: 'pause', when: state.when });
+            state = {
+                mode: 'waitingForReady',
+                when: state.when,
+            };
+            break;
+
         case 'waitingForReady':
+            unicast(ctx, { whatdo: 'pause', when: state.when });
+            break;
+
         case 'waitingForWhenReports':
+            unicast(ctx, { whatdo: 'pause', when: 0 });
+            break;
+
         case 'playing':
+            pauseAndReportWhen();
             break;
 
         default:
             return assertNever(state);
     }
 
-    notify(`Welcome to the party, ${name}!`);
+    notify(`Welcome to the party, ${ctx.name}! We are up to ${getViewers().length} viewers.`);
 });
 
-fromClients.on('disconnect', ({ id, name }) => {
+fromClients.on('leave', ({ id, name }) => {
     readyWhens.delete(id);
 
     if (getViewers().length === 0) {
