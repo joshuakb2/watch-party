@@ -207,8 +207,6 @@ function pauseAndReportWhen() {
 }
 
 fromClients.on('join', (ctx, reconnecting) => {
-    readyWhens.set(ctx.id, null);
-
     switch (state.mode) {
         case 'init':
             state = {
@@ -241,6 +239,8 @@ fromClients.on('join', (ctx, reconnecting) => {
         default:
             return assertNever(state);
     }
+
+    readyWhens.set(ctx.id, null);
 
     notify(`Welcome to the party, ${ctx.name}! We are up to ${getViewers().length} viewers.`);
 });
