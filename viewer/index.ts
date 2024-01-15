@@ -99,6 +99,7 @@ videoEnabled.then(({ clientName }) => {
                         sub.unsubscribe();
                     }
                     subscriptions.splice(0);
+                    video.pause();
                     alert('You have been kicked!');
                     break;
 

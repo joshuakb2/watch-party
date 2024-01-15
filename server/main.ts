@@ -146,11 +146,14 @@ function cliRewind(cli: readline.Interface, secondsStr?: string) {
 function cliKick(cli: readline.Interface, ...who: (undefined | string)[]) {
     if (who.length === 1 && who[0] === 'everyone') {
         broadcast({ whatdo: 'gtfo' });
-        cli.write(`Kicked everyone.`);
+        cli.write(`Kicked everyone.\n`);
     }
 
     const ids = who.filter(Boolean);
-    for (const id of ids) unicast(id, { whatdo: 'gtfo' });
+    if (ids.length > 0) {
+        for (const id of ids) unicast(id, { whatdo: 'gtfo' });
+        cli.write(`Kicked ${ids.join(', ')}\n`);
+    }
 }
 
 function quit() {
