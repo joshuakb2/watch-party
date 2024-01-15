@@ -151,6 +151,7 @@ video.oncanplay = () => {
 declare global {
     interface Window {
         enablePlayer: () => void;
+        toggleSubtitles: () => void;
         openFullscreen: () => void;
     }
 }
@@ -164,6 +165,11 @@ window.enablePlayer = () => {
     const enableButton = document.querySelector('#enable-button');
     if (enableButton instanceof HTMLButtonElement) {
         enableButton.style.display = 'none';
+    }
+
+    const subtitlesButton = document.querySelector('#subtitles-button');
+    if (subtitlesButton instanceof HTMLButtonElement) {
+        subtitlesButton.style.display = 'inline';
     }
 
     const fullscreenButton = document.querySelector('#fullscreen-button');
@@ -192,6 +198,13 @@ window.enablePlayer = () => {
     localStorage.setItem('watch_party_client_name', clientName);
     const args = { clientName };
     setTimeout(() => onVideoEnabled?.(args), 0);
+};
+
+window.toggleSubtitles = () => {
+    const track = video.textTracks[0];
+    if (track) {
+        track.mode = track.mode === 'showing' ? 'hidden' : 'showing';
+    }
 };
 
 window.openFullscreen = () => {

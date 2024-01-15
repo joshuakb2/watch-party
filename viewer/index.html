@@ -30,7 +30,7 @@
                 font-size: 32pt;
             }
 
-            #fullscreen-button {
+            #footer button {
                 display: none;
                 font-size: 20pt;
             }
@@ -48,12 +48,13 @@
         <div id="center">
             <button id="enable-button" type="button" onclick="enablePlayer()" style="">Click here to start watching!</button>
             <video preload="auto" style="display: none" crossorigin="anonymous">
-                <source src="https://files.joshuabaker.me/weird_bg.mp4" type="video/mp4">
+                <source src="https://files.joshuabaker.me/heat.mp4" type="video/mp4">
                 <track label="English" kind="subtitles" srclang="en" src="https://files.joshuabaker.me/heat.vtt" default>
             </video>
             <div id="connecting-msg">Waiting for connection to server...</div>
         </div>
         <div id="footer">
+            <button id="subtitles-button" type="button" onclick="toggleSubtitles()">Toggle subtitles</button>
             <button id="fullscreen-button" type="button" onclick="openFullscreen()">Fullscreen</button>
         </div>
     </body>
