@@ -361,7 +361,7 @@ fromClients.on('reportReady', (id, when) => {
     switch (state.mode) {
         case 'paused':
             if (Math.abs(when - state.when) > epsilon) {
-                state = { mode: 'waitingForReady', when };
+                state = { mode: 'waitingForReady', when: state.when };
             }
             break;
 
