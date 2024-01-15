@@ -90,8 +90,7 @@ const createContext = async (opts: CreateWSSContextFnOptions) => {
     const ws = opts.res;
     const id = crypto.randomUUID();
     const name = null as null | string;
-    console.log(`${id} joins the party`);
-    opts.res.once('close', () => console.log(`${id} left the party`));
+
     return {
         id,
         ws,
