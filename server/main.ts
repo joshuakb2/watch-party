@@ -3,7 +3,7 @@
 import '@total-typescript/ts-reset/filter-boolean';
 import readline from 'readline';
 import { inspect } from 'util';
-import { broadcast, fromClients, getViewers, kick, notify, startServer, unicast } from './trpc';
+import { broadcast, fromClients, getViewers, kick, notify, startServer, stopServer, unicast } from './trpc';
 
 const epsilon = 0.1;
 
@@ -147,6 +147,7 @@ function cliKick(cli: readline.Interface, ...who: (undefined | string)[]) {
     if (who.length === 1 && who[0] === 'everyone') {
         kick('everyone')
         cli.write(`Kicked everyone.\n`);
+        return;
     }
 
     const ids = who.filter(Boolean);
@@ -157,6 +158,7 @@ function cliKick(cli: readline.Interface, ...who: (undefined | string)[]) {
 }
 
 function quit() {
+    stopServer();
     process.exit(0);
 }
 

@@ -70,8 +70,17 @@ videoEnabled.then(({ clientName }) => {
                 }
                 else {
                     localStorage.setItem('watch_party_reload_count', '0');
+                    const connectingMsg = document.querySelector('#connecting-msg');
+                    if (connectingMsg instanceof HTMLElement) connectingMsg.style.display = 'none';
+                    video.style.display = 'block';
                 }
             });
+        },
+        onStopped: () => {
+            const connectingMsg = document.querySelector('#connecting-msg');
+            if (connectingMsg instanceof HTMLElement) connectingMsg.style.display = 'block';
+            video.style.display = 'none';
+            video.pause();
         },
         onData: msg => {
             wasToldWhatDo = true;
@@ -142,14 +151,24 @@ video.oncanplay = () => {
 declare global {
     interface Window {
         enablePlayer: () => void;
+        openFullscreen: () => void;
     }
 }
 
 window.enablePlayer = () => {
-    video.style.display = '';
+    const connectingMsg = document.querySelector('#connecting-msg');
+    if (connectingMsg instanceof HTMLElement) {
+        connectingMsg.style.display = 'block';
+    }
+
     const enableButton = document.querySelector('#enable-button');
     if (enableButton instanceof HTMLButtonElement) {
         enableButton.style.display = 'none';
+    }
+
+    const fullscreenButton = document.querySelector('#fullscreen-button');
+    if (fullscreenButton instanceof HTMLButtonElement) {
+        fullscreenButton.style.display = 'inline';
     }
 
     const oldClientName = localStorage.getItem('watch_party_client_name');
@@ -173,4 +192,16 @@ window.enablePlayer = () => {
     localStorage.setItem('watch_party_client_name', clientName);
     const args = { clientName };
     setTimeout(() => onVideoEnabled?.(args), 0);
+};
+
+window.openFullscreen = () => {
+    const videoWrapper = video.parentElement;
+    if (videoWrapper) {
+        videoWrapper?.requestFullscreen({ navigationUI: 'hide' });
+        videoWrapper.onkeydown = ev => {
+            if (ev.key === 'escape') {
+                document.exitFullscreen();
+            }
+        };
+    }
 };

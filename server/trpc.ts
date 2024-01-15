@@ -79,10 +79,11 @@ export function kick(who: 'everyone' | string[]) {
     for (const ctx of ctxs) {
         unicast(ctx, msg);
 
-        const { ws } = desiredReceivers.get(ctx) ?? {};
+        const { observer, ws } = desiredReceivers.get(ctx) ?? {};
         if (!ws) continue;
 
-        ws.close();
+        observer?.complete();
+        setTimeout(() => ws.close(), 500);
     }
 }
 
@@ -180,6 +181,9 @@ const appRouter = router({
 
 export type AppRouter = typeof appRouter;
 
+let wss: ws.WebSocketServer | undefined;
+let broadcastReconnectNotification: (() => void) | undefined;
+
 export function startServer() {
     const host = '0.0.0.0';
     const port = 13579;
@@ -206,11 +210,19 @@ export function startServer() {
         server = http.createServer().listen(port, host);
     }
 
-    const wss = new ws.WebSocketServer({ server });
-    const handler = applyWSSHandler({ wss, router: appRouter, createContext })
+    wss = new ws.WebSocketServer({ server });
+    const handler = applyWSSHandler({ wss, router: appRouter, createContext });
+    broadcastReconnectNotification = handler.broadcastReconnectNotification;
 
-    process.on('SIGTERM', () => {
-        handler.broadcastReconnectNotification();
-        wss.close();
-    });
+    process.on('SIGTERM', stopServer);
+}
+
+export function stopServer() {
+    console.log('Stopping server');
+    for (const { observer } of desiredReceivers.values()) {
+        observer.complete();
+    }
+    broadcastReconnectNotification?.();
+    wss?.close();
+    setTimeout(() => process.exit(0), 500);
 }

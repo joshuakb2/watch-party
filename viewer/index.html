@@ -5,27 +5,56 @@
         <title>Watch Party!</title>
         <style>
             body {
-                background-image: url(bagel.png);
-                background-repeat: repeat;
-                background-size: auto;
+                background-color: black;
+                color: white;
                 display: flex;
                 flex-direction: column;
-                justify-content: start;
+                justify-content: space-between;
                 align-items: center;
+                height: 100vh;
+                margin: 0;
+            }
+
+            body > div {
+                display: flex;
+                flex-direction: horizontal;
+                justify-content: center;
             }
 
             video {
-                width: 70%;
+                max-width: 100vw;
                 background-color: black;
+            }
+
+            #enable-button {
+                font-size: 32pt;
+            }
+
+            #fullscreen-button {
+                display: none;
+                font-size: 20pt;
+            }
+
+            #connecting-msg {
+                display: none;
+                font-size: 32pt;
+                max-width: 100vw;
             }
         </style>
         <script type="module" src="./index.js"></script>
     </head>
     <body>
-        <video preload="auto" style="display: none" crossorigin="anonymous">
-            <source src="https://files.joshuabaker.me/weird_bg.mp4" type="video/mp4">
-            <track label="English" kind="subtitles" srclang="en" src="https://files.joshuabaker.me/heat.vtt" default>
-        </video>
-        <button id="enable-button" type="button" onclick="enablePlayer()">Click here to start watching!</button>
+        <div id="header"></div>
+        <div id="center">
+            <button id="enable-button" type="button" onclick="enablePlayer()" style="">Click here to start watching!</button>
+            <video preload="auto" style="display: none" crossorigin="anonymous">
+                <source src="https://files.joshuabaker.me/weird_bg.mp4" type="video/mp4">
+                <track label="English" kind="subtitles" srclang="en" src="https://files.joshuabaker.me/heat.vtt" default>
+            </video>
+            <div id="connecting-msg">Waiting for connection to server...</div>
+        </div>
+        <div id="footer">
+            <button id="fullscreen-button" type="button" onclick="openFullscreen()">Fullscreen</button>
+        </div>
     </body>
 </html>
