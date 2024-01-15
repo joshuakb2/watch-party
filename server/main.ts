@@ -41,6 +41,7 @@ const commands = new Map<string, (cli: readline.Interface, ...args: (string | un
     ['status', printStatus],
     ['play', cliPlay],
     ['pause', cliPause],
+    ['say', cliSay],
     ['exit', quit],
     ['quit', quit],
 ]);
@@ -49,6 +50,7 @@ const helpInfo = new Map([
     ['help', 'Display this help message'],
     ['play', 'Start playing video'],
     ['pause [when]', 'Pause the video and optionally seeks to the specified number of seconds'],
+    ['say [...words]', 'Send a notification to all viewers'],
     ['status', 'Show how many viewers are connected.'],
     ['exit', 'Stop the server'],
 ]);
@@ -98,6 +100,10 @@ function cliPause(cli: readline.Interface, whenStr?: string) {
         cli.write(`Pausing at ${when}\n`);
         pauseAt(when);
     }
+}
+
+function cliSay(_cli: readline.Interface, ...words: (string | undefined)[]) {
+    notify(words.filter(Boolean).join(' '));
 }
 
 function quit() {
