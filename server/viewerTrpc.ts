@@ -1,5 +1,5 @@
 import { initTRPC } from '@trpc/server';
-import { applyWSSHandler, CreateWSSContextFnOptions } from '@trpc/server/adapters/ws';
+import { CreateWSSContextFnOptions } from '@trpc/server/adapters/ws';
 import { Observer, observable } from '@trpc/server/observable';
 import * as ws from 'ws';
 import { z } from 'zod';
@@ -8,8 +8,6 @@ import EventEmitter from 'events';
 import crypto from 'crypto';
 import { readFileSync } from 'fs';
 import { inspect } from 'util';
-import * as http from 'http';
-import * as https from 'https';
 
 const version = readFileSync('../version').toString().trim();
 
@@ -24,7 +22,7 @@ type Desired = {
 
 type Notification = string;
 
-type EventsFromClients = {
+type EventsFromViewers = {
     join: (ctx: ClientContext, reconnecting: null | { when: number }) => void;
     leave: (ctx: ClientContext) => void;
     play: () => void;
@@ -33,7 +31,13 @@ type EventsFromClients = {
     reportWhen: (ctx: ClientContext, when: number) => void;
 };
 
-export const fromClients = new EventEmitter() as TypedEventEmitter<EventsFromClients>;
+export const fromViewers = new EventEmitter() as TypedEventEmitter<EventsFromViewers>;
+
+type EventsFromControllers = {
+    cliCommand: (cmd: string) => Promise<string>;
+};
+
+export const fromControllers = new EventEmitter() as TypedEventEmitter<EventsFromControllers>;
 
 const desiredReceivers = new Map<ClientContext, {
     ws: ws.WebSocket;
@@ -87,7 +91,7 @@ export function kick(who: 'everyone' | string[]) {
     }
 }
 
-const createContext = async (opts: CreateWSSContextFnOptions) => {
+export const createViewerContext = async (opts: CreateWSSContextFnOptions) => {
     const ws = opts.res;
     const id = crypto.randomUUID();
     const name = null as null | string;
@@ -107,12 +111,12 @@ const createContext = async (opts: CreateWSSContextFnOptions) => {
     };
 };
 
-export type ClientContext = Awaited<ReturnType<typeof createContext>>;
+export type ClientContext = Awaited<ReturnType<typeof createViewerContext>>;
 
-const t = initTRPC.context<typeof createContext>().create();
+const t = initTRPC.context<typeof createViewerContext>().create();
 const router = t.router;
 
-const appRouter = router({
+export const viewerRouter = router({
     announce: t.procedure
         .input(z.object({
             name: z.string(),
@@ -122,7 +126,7 @@ const appRouter = router({
         .mutation(req => {
             req.ctx.name = req.input.name;
             console.log(`announce from ${req.ctx.id}: name = ${req.input.name}, reconnecting = ${inspect(req.input.reconnecting)}`);
-            fromClients.emit('join', req.ctx, req.input.reconnecting);
+            fromViewers.emit('join', req.ctx, req.input.reconnecting);
             return { version };
         }),
 
@@ -130,28 +134,28 @@ const appRouter = router({
         .input(z.null())
         .mutation(req => {
             console.log(`play from ${req.ctx.shown}`);
-            fromClients.emit('play');
+            fromViewers.emit('play');
         }),
 
     pause: t.procedure
         .input(z.object({ when: z.number() }))
         .mutation(req => {
             console.log(`pause at ${req.input.when} from ${req.ctx.shown}`);
-            fromClients.emit('pause', req.input.when);
+            fromViewers.emit('pause', req.input.when);
         }),
 
     ready: t.procedure
         .input(z.object({ when: z.number() }))
         .mutation(req => {
             console.log(`ready at ${req.input.when} from ${req.ctx.shown}`);
-            fromClients.emit('reportReady', req.ctx, req.input.when);
+            fromViewers.emit('reportReady', req.ctx, req.input.when);
         }),
 
     reportWhen: t.procedure
         .input(z.object({ when: z.number() }))
         .mutation(req => {
             console.log(`reportWhen at ${req.input.when} from ${req.ctx.shown}`);
-            fromClients.emit('reportWhen', req.ctx, req.input.when);
+            fromViewers.emit('reportWhen', req.ctx, req.input.when);
         }),
 
     desired: t.procedure
@@ -164,7 +168,7 @@ const appRouter = router({
                 desiredReceivers.delete(req.ctx);
 
                 if (req.ctx.name) {
-                    fromClients.emit('leave', req.ctx);
+                    fromViewers.emit('leave', req.ctx);
                 }
             };
         })),
@@ -179,50 +183,10 @@ const appRouter = router({
         })),
 });
 
-export type AppRouter = typeof appRouter;
+export type ViewerRouter = typeof viewerRouter;
 
-let wss: ws.WebSocketServer | undefined;
-let broadcastReconnectNotification: (() => void) | undefined;
-
-export function startServer() {
-    const host = '0.0.0.0';
-    const port = 13579;
-
-    let server: http.Server;
-    if (process.env.SSL_CERT || process.env.SSL_KEY) {
-        if (!process.env.SSL_CERT) {
-            console.error('FATAL: SSL_KEY variable found but SSL_CERT variable missing');
-            process.exit(1);
-        }
-        if (!process.env.SSL_KEY) {
-            console.error('FATAL: SSL_CERT variable found but SSL_KEY variable missing');
-            process.exit(1);
-        }
-
-        console.log(`Starting WSS server on ${host}:${port}`);
-        server = https.createServer({
-            cert: readFileSync(process.env.SSL_CERT),
-            key: readFileSync(process.env.SSL_KEY),
-        }).listen(port, host);
-    }
-    else {
-        console.log(`Starting WS server on ${host}:${port}`);
-        server = http.createServer().listen(port, host);
-    }
-
-    wss = new ws.WebSocketServer({ server });
-    const handler = applyWSSHandler({ wss, router: appRouter, createContext });
-    broadcastReconnectNotification = handler.broadcastReconnectNotification;
-
-    process.on('SIGTERM', stopServer);
-}
-
-export function stopServer() {
-    console.log('Stopping server');
+export function stopViewerSubscriptions() {
     for (const { observer } of desiredReceivers.values()) {
         observer.complete();
     }
-    broadcastReconnectNotification?.();
-    wss?.close();
-    setTimeout(() => process.exit(0), 500);
 }

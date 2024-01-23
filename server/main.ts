@@ -3,41 +3,53 @@
 import '@total-typescript/ts-reset/filter-boolean';
 import readline from 'readline';
 import { inspect } from 'util';
-import { broadcast, fromClients, getViewers, kick, notify, startServer, stopServer, unicast } from './trpc';
+import { startServer, stopServer } from './trpcServer';
+import { broadcast, fromViewers, getViewers, kick, notify, unicast } from './viewerTrpc';
+import { installCliCommandHandler } from './controllerTrpc';
 
 const epsilon = 0.1;
 
 async function main() {
     startServer();
 
+    installCliCommandHandler(async input => {
+        return await handleCommand(input);
+    });
+
     let cli = readline.createInterface(process.stdin, process.stdout);
 
-    let cmds = [ ...commands.keys() ];
-
     while (true) {
-        let [ cmd, ...args ] = (await new Promise<string>(resolve => cli.question('$ ', resolve))).trim().split(/ +/g);
-        if (!cmd) continue;
-
-        let matching = cmds.filter(x => x.startsWith(cmd));
-
-        if (matching.length === 0) {
-            cli.write(`No such command as "${cmd}" exists.\n`);
-            continue;
-        }
-
-        if (matching.length > 1) {
-            cli.write(`Ambiguous command could match any of ${matching.map(x => `"${x}"`).join(', ')}\n`);
-            continue;
-        }
-
-        cmd = matching[0];
-
-        // Do the command
-        commands.get(cmd)?.(cli, ...args);
+        const nextInput = await new Promise<string>(resolve => cli.question('$ ', resolve));
+        const response = await handleCommand(nextInput, cli);
+        cli.write(`${response}\n`);
     }
 }
 
-const commands = new Map<string, (cli: readline.Interface, ...args: (string | undefined)[]) => void>([
+function splitArgs(input: string) {
+    return input.trim().split(/ +/g);
+}
+
+async function handleCommand(input: string, cli?: readline.Interface) {
+    let [cmd, ...args] = splitArgs(input);
+    if (!cmd) return;
+
+    let matching = [...commands].filter(([cmdName, _]) => cmdName.startsWith(cmd));
+
+    if (matching.length > 1) {
+        return `Ambiguous command could match any of ${matching.map(x => `"${x}"`).join(', ')}`;
+    }
+
+    if (matching.length === 0) {
+        return `No such command as "${cmd}" exists.`;
+    }
+
+    const f = matching[0][1];
+
+    // Do the command
+    return await f(cli, ...args);
+}
+
+const commands = new Map<string, (cli?: readline.Interface, ...args: (string | undefined)[]) => Promise<string>>([
     ['help', printHelp],
     ['status', printStatus],
     ['play', cliPlay],
@@ -60,104 +72,110 @@ const helpInfo = new Map([
     ['exit', 'Stop the server'],
 ]);
 
-function printHelp(cli: readline.Interface) {
+async function printHelp() {
+    let response = '';
     for (let [cmd, info] of helpInfo) {
-        cli.write(`${cmd}: ${info}\n`);
+        response += `${cmd}: ${info}\n`;
     }
+    return response;
 }
 
-function printStatus(cli: readline.Interface) {
+async function printStatus() {
     const n = getViewers().length;
-    cli.write(`There ${n === 1 ? 'is' : 'are'} ${n} ${n === 1 ? 'viewer' : 'viewers'} connected.\n`);
-    cli.write(`Status: ${inspect(state)}\n`);
-    cli.write(`Viewers: ${inspect(getViewers())}\n`);
-    cli.write(`ReadyWhens: ${inspect(readyWhens)}\n`);
+    let response = '';
+    response += `There ${n === 1 ? 'is' : 'are'} ${n} ${n === 1 ? 'viewer' : 'viewers'} connected.\n`;
+    response += `Status: ${inspect(state)}\n`;
+    response += `Viewers: ${inspect(getViewers())}\n`;
+    response += `ReadyWhens: ${inspect(readyWhens)}\n`;
+    return response;
 }
 
-function cliPlay(cli: readline.Interface) {
+async function cliPlay() {
     const stateRef = state;
     if (stateRef.mode === 'playing') {
-        cli.write(`Already playing\n`);
-        return;
+        return `Already playing\n`;
     }
 
     playIfPossible();
     if (state.mode === 'playing') {
-        cli.write(`Now playing.\n`);
+        return `Now playing.\n`;
     }
     else {
-        cli.write(`Can't play right now\n`);
+        return `Can't play right now\n`;
     }
 }
 
-function cliPause(cli: readline.Interface, whenStr?: string) {
+async function cliPause(_cli?: readline.Interface, whenStr?: string) {
     if (typeof whenStr !== 'string') {
         if (state.mode === 'playing') {
-            cli.write(`Instructing viewers to pause\n`);
             pauseAndReportWhen();
+            return `Instructing viewers to pause\n`;
         }
         else {
-            cli.write(`Can't pause right now\n`);
+            return `Can't pause right now\n`;
         }
     }
     else {
         const when = +whenStr;
-        cli.write(`Pausing at ${when}\n`);
         pauseAt(when);
+        return `Pausing at ${when}\n`;
     }
 }
 
-function cliSay(_cli: readline.Interface, ...words: (string | undefined)[]) {
-    notify(words.filter(Boolean).join(' '));
+async function cliSay(_cli?: readline.Interface, ...words: (string | undefined)[]) {
+    const message = words.filter(Boolean).join(' ');
+    notify(message);
+    return `Said "${message}"`;
 }
 
-function cliRewind(cli: readline.Interface, secondsStr?: string) {
+async function cliRewind(_cli?: readline.Interface, secondsStr?: string) {
     if (!secondsStr) {
-        cli.write(`You must provide a number of seconds to rewind.\n`);
-        return;
+        return `You must provide a number of seconds to rewind.\n`;
     }
 
     const seconds = +secondsStr;
 
     if (isNaN(seconds)) {
-        cli.write(`Invalid number given.\n`);
-        return;
+        return `Invalid number given.\n`;
     }
 
     switch (state.mode) {
         case 'paused':
         case 'waitingForReady':
             const newWhen = state.when - seconds;
-            cli.write(`Rewinding to ${newWhen}\n`);
             pauseAt(newWhen);
-            break;
+            return `Rewinding to ${newWhen}\n`;
 
         case 'init':
         case 'waitingForWhenReports':
         case 'playing':
-            cli.write(`Cannot rewind from state = ${state.mode}\n`);
-            break;
+            return `Cannot rewind from state = ${state.mode}\n`;
 
         default:
             return assertNever(state);
     }
 }
 
-function cliKick(cli: readline.Interface, ...who: (undefined | string)[]) {
+async function cliKick(_cli?: readline.Interface, ...who: (undefined | string)[]) {
     if (who.length === 1 && who[0] === 'everyone') {
-        kick('everyone')
-        cli.write(`Kicked everyone.\n`);
-        return;
+        kick('everyone');
+        return `Kicked everyone.\n`;
     }
 
     const ids = who.filter(Boolean);
     if (ids.length > 0) {
         kick(ids);
-        cli.write(`Kicked ${ids.join(', ')}\n`);
+        return `Kicked ${ids.join(', ')}\n`;
     }
+
+    return `Didn't kick anybody\n`;
 }
 
-function quit() {
+async function quit(cli?: readline.Interface) {
+    if (!cli) {
+        return 'You can\'t stop the server from the controller app\n';
+    }
+
     stopServer();
     process.exit(0);
 }
@@ -206,7 +224,7 @@ function pauseAndReportWhen() {
     };
 }
 
-fromClients.on('join', (ctx, reconnecting) => {
+fromViewers.on('join', (ctx, reconnecting) => {
     switch (state.mode) {
         case 'init':
             state = {
@@ -245,7 +263,7 @@ fromClients.on('join', (ctx, reconnecting) => {
     notify(`Welcome to the party, ${ctx.name}! We are up to ${getViewers().length} viewers.`);
 });
 
-fromClients.on('leave', ({ id, name }) => {
+fromViewers.on('leave', ({ id, name }) => {
     readyWhens.delete(id);
 
     if (getViewers().length === 0) {
@@ -310,7 +328,7 @@ function checkWhenReports(currentState: WaitingForWhenReportsState) {
     broadcast({ whatdo: 'pause', when: consensus });
 }
 
-fromClients.on('play', () => {
+fromViewers.on('play', () => {
     playIfPossible();
 });
 
@@ -334,7 +352,7 @@ function playIfPossible() {
     }
 }
 
-fromClients.on('pause', when => {
+fromViewers.on('pause', when => {
     switch (state.mode) {
         case 'init':
         case 'playing':
@@ -356,7 +374,7 @@ function pauseAt(when: number) {
     broadcast({ whatdo: 'pause', when });
 }
 
-fromClients.on('reportReady', ({ id }, when) => {
+fromViewers.on('reportReady', ({ id }, when) => {
     readyWhens.set(id, when);
 
     switch (state.mode) {
@@ -380,7 +398,7 @@ fromClients.on('reportReady', ({ id }, when) => {
     }
 });
 
-fromClients.on('reportWhen', ({ id }, when) => {
+fromViewers.on('reportWhen', ({ id }, when) => {
     switch (state.mode) {
         case 'waitingForWhenReports':
             state.whenReports.set(id, when);

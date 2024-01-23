@@ -104,6 +104,6 @@
   "include": [
     "**/*.ts",
     "**/*.tsx",
-    "../server/viewerTrpc.ts"
+    // "../server/trpc.ts"
   ]
 }

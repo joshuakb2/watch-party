@@ -5,9 +5,10 @@
   "main": "main.js",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
-    "make": "npm run make-server && npm run make-viewer",
+    "make": "npm run make-server && npm run make-viewer && npm run make-controller",
     "make-server": "cd server && tsc && chmod +x main.js",
-    "make-viewer": "cd viewer && tsc && ./build.mjs"
+    "make-viewer": "cd viewer && tsc && ./build.mjs",
+    "make-controller": "cd controller && tsc && ./build.mjs"
   },
   "author": "",
   "license": "ISC",
@@ -19,6 +20,8 @@
     "@types/ws": "^8.5.10",
     "esbuild": "^0.19.11",
     "esbuild-plugin-replace": "^1.4.0",
+    "esbuild-plugin-solid": "^0.5.0",
+    "solid-js": "^1.8.11",
     "typed-emitter": "^2.1.0",
     "typescript": "^5.3.3",
     "ws": "^8.8.0",

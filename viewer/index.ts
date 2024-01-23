@@ -1,49 +1,18 @@
-import { createTRPCProxyClient, createWSClient, wsLink } from '@trpc/client';
-import type { AppRouter } from '../server/trpc';
 import type { Unsubscribable } from '@trpc/server/observable';
-
-const isSafari = navigator.vendor && navigator.vendor.indexOf('Apple') > -1 &&
-    navigator.userAgent &&
-    navigator.userAgent.indexOf('CriOS') == -1 &&
-    navigator.userAgent.indexOf('FxiOS') == -1;
-
-if (isSafari) {
-    const tellThemOff = () => {
-        alert(`
-            Hey, so Safari won't cooperate with me at all so,
-            not only will this app not work for YOU using Safari,
-            but you being connected will prevent playback for
-            everyone else in the party too! So please close this
-            tab and come back using a better browser such as
-            Chrome, Firefox, or Edge. Thanks!
-        `.trim().replace(/\s+/g, ' '));
-        setTimeout(tellThemOff, 5000);
-    };
-    tellThemOff();
-    throw new Error('YOU SHALL NOT PASS');
-}
+import { render } from 'solid-js/web';
+import { ViewerApp } from './ViewerApp';
+import { onVideoEnabled, startTrpc, videoEnabled } from './trpc';
 
 const version = '_$VERSION$_';
 
 const raise = (error: Error) => { throw error; };
 const video = document.querySelector('video') ?? raise(new Error('no video?'));
 
-type VideoEnabledArgs = {
-    clientName: string;
-};
-
-let onVideoEnabled: ((args: VideoEnabledArgs) => void) | undefined;
-const videoEnabled = new Promise<VideoEnabledArgs>(resolve => onVideoEnabled = resolve);
+// const root = document.querySelector('#root');
+// if (!root) throw new Error('No root div!');
+// render(ViewerApp, root);
 
 let trpc_: undefined | ReturnType<typeof startTrpc>;
-
-function startTrpc() {
-    return createTRPCProxyClient<AppRouter>({
-        links: [wsLink({
-            client: createWSClient({ url: `${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.hostname}:13579/` }),
-        })]
-    });
-}
 
 videoEnabled.then(({ clientName }) => {
     let wasToldWhatDo = false;
@@ -147,6 +116,8 @@ video.oncanplay = () => {
         trpc_.ready.mutate({ when: video.currentTime });
     }
 };
+
+// Delete the following
 
 declare global {
     interface Window {
