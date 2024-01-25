@@ -23,12 +23,12 @@ type Desired = {
 type Notification = string;
 
 type EventsFromViewers = {
-    join: (ctx: ClientContext, reconnecting: null | { when: number }) => void;
-    leave: (ctx: ClientContext) => void;
+    join: (ctx: ViewerContext, reconnecting: null | { when: number }) => void;
+    leave: (ctx: ViewerContext) => void;
     play: () => void;
     pause: (when: number) => void;
-    reportReady: (ctx: ClientContext, when: number) => void;
-    reportWhen: (ctx: ClientContext, when: number) => void;
+    reportReady: (ctx: ViewerContext, when: number) => void;
+    reportWhen: (ctx: ViewerContext, when: number) => void;
 };
 
 export const fromViewers = new EventEmitter() as TypedEventEmitter<EventsFromViewers>;
@@ -39,20 +39,20 @@ type EventsFromControllers = {
 
 export const fromControllers = new EventEmitter() as TypedEventEmitter<EventsFromControllers>;
 
-const desiredReceivers = new Map<ClientContext, {
+const desiredReceivers = new Map<ViewerContext, {
     ws: ws.WebSocket;
     observer: Observer<Desired, unknown>;
 }>();
-const notificationReceivers = new Map<ClientContext, Observer<Notification, unknown>>();
+const notificationReceivers = new Map<ViewerContext, Observer<Notification, unknown>>();
 
 export function getViewers() {
-    return [...desiredReceivers.keys()].map(x => x.id);
+    return [...desiredReceivers.keys()];
 }
 
-export function unicast(ctx: ClientContext, desired: Desired) {
+export function unicast(ctx: ViewerContext, desired: Desired) {
     const { observer } = [...desiredReceivers].find(([x]) => x === ctx)?.[1] ?? {};
     if (!observer) return;
-    console.log(`Sending ${inspect(desired)} to ${ctx.shown}`);
+    console.log(`Sending ${inspect(desired)} to ${ctx}`);
     observer.next(desired);
 }
 
@@ -91,27 +91,36 @@ export function kick(who: 'everyone' | string[]) {
     }
 }
 
+class ViewerContext {
+    id: string;
+    name: string | null;
+    ws: ws.WebSocket;
+
+    constructor(ws: ws.WebSocket) {
+        this.id = crypto.randomUUID();
+        this.name = null;
+        this.ws = ws;
+    }
+
+    [inspect.custom]() {
+        return this.toString();
+    }
+
+    toString() {
+        if (this.name) {
+            return `${this.name} (${this.id})`;
+        }
+        else {
+            return this.id;
+        }
+    }
+}
+
+export type { ViewerContext };
+
 export const createViewerContext = async (opts: CreateWSSContextFnOptions) => {
-    const ws = opts.res;
-    const id = crypto.randomUUID();
-    const name = null as null | string;
-
-    return {
-        id,
-        ws,
-        name,
-        get shown() {
-            if (this.name) {
-                return `${this.name} (${this.id})`;
-            }
-            else {
-                return this.id;
-            }
-        },
-    };
+    return new ViewerContext(opts.res);
 };
-
-export type ClientContext = Awaited<ReturnType<typeof createViewerContext>>;
 
 const t = initTRPC.context<typeof createViewerContext>().create();
 const router = t.router;
@@ -133,38 +142,38 @@ export const viewerRouter = router({
     play: t.procedure
         .input(z.null())
         .mutation(req => {
-            console.log(`play from ${req.ctx.shown}`);
+            console.log(`play from ${req.ctx}`);
             fromViewers.emit('play');
         }),
 
     pause: t.procedure
         .input(z.object({ when: z.number() }))
         .mutation(req => {
-            console.log(`pause at ${req.input.when} from ${req.ctx.shown}`);
+            console.log(`pause at ${req.input.when} from ${req.ctx}`);
             fromViewers.emit('pause', req.input.when);
         }),
 
     ready: t.procedure
         .input(z.object({ when: z.number() }))
         .mutation(req => {
-            console.log(`ready at ${req.input.when} from ${req.ctx.shown}`);
+            console.log(`ready at ${req.input.when} from ${req.ctx}`);
             fromViewers.emit('reportReady', req.ctx, req.input.when);
         }),
 
     reportWhen: t.procedure
         .input(z.object({ when: z.number() }))
         .mutation(req => {
-            console.log(`reportWhen at ${req.input.when} from ${req.ctx.shown}`);
+            console.log(`reportWhen at ${req.input.when} from ${req.ctx}`);
             fromViewers.emit('reportWhen', req.ctx, req.input.when);
         }),
 
     desired: t.procedure
         .input(z.null())
         .subscription(req => observable<Desired>(observer => {
-            console.log(`subscribe desired from ${req.ctx.shown}`);
+            console.log(`subscribe desired from ${req.ctx}`);
             desiredReceivers.set(req.ctx, { ws: req.ctx.ws, observer });
             return () => {
-                console.log(`unsubscribe desired from ${req.ctx.shown}`);
+                console.log(`unsubscribe desired from ${req.ctx}`);
                 desiredReceivers.delete(req.ctx);
 
                 if (req.ctx.name) {

@@ -6,7 +6,7 @@ import { replace } from 'esbuild-plugin-replace';
 import { readFileSync } from 'fs';
 
 await esbuild.build({
-    entryPoints: ['index.ts'],
+    entryPoints: ['index.tsx'],
     bundle: true,
     minify: false,
     outfile: 'index.js',

@@ -4,7 +4,7 @@ import '@total-typescript/ts-reset/filter-boolean';
 import readline from 'readline';
 import { inspect } from 'util';
 import { startServer, stopServer } from './trpcServer';
-import { broadcast, fromViewers, getViewers, kick, notify, unicast } from './viewerTrpc';
+import { ViewerContext, broadcast, fromViewers, getViewers, kick, notify, unicast } from './viewerTrpc';
 import { installCliCommandHandler } from './controllerTrpc';
 
 const epsilon = 0.1;
@@ -21,7 +21,7 @@ async function main() {
     while (true) {
         const nextInput = await new Promise<string>(resolve => cli.question('$ ', resolve));
         const response = await handleCommand(nextInput, cli);
-        cli.write(`${response}\n`);
+        cli.write(`${response ?? ''}\n`);
     }
 }
 
@@ -180,7 +180,7 @@ async function quit(cli?: readline.Interface) {
     process.exit(0);
 }
 
-const readyWhens = new Map<string, number | null>();
+const readyWhens = new Map<ViewerContext, number | null>();
 
 type InitMode = {
     mode: 'init';
@@ -198,8 +198,8 @@ type WaitingForReadyState = {
 
 type WaitingForWhenReportsState = {
     mode: 'waitingForWhenReports';
-    inSync: string[];
-    whenReports: Map<string, number>;
+    inSync: ViewerContext[];
+    whenReports: Map<ViewerContext, number>;
 };
 
 type PlayingState = {
@@ -258,13 +258,13 @@ fromViewers.on('join', (ctx, reconnecting) => {
             return assertNever(state);
     }
 
-    readyWhens.set(ctx.id, null);
+    readyWhens.set(ctx, null);
 
     notify(`Welcome to the party, ${ctx.name}! We are up to ${getViewers().length} viewers.`);
 });
 
-fromViewers.on('leave', ({ id, name }) => {
-    readyWhens.delete(id);
+fromViewers.on('leave', ctx => {
+    readyWhens.delete(ctx);
 
     if (getViewers().length === 0) {
         state = { mode: 'init' };
@@ -289,7 +289,7 @@ fromViewers.on('leave', ({ id, name }) => {
             return assertNever(state);
     }
 
-    notify(`${name ?? 'Somebody'} left, down to ${getViewers().length} viewers.`);
+    notify(`${ctx.name ?? 'Somebody'} left, down to ${getViewers().length} viewers.`);
 });
 
 function checkIfAllReady(currentState: WaitingForReadyState) {
@@ -311,14 +311,14 @@ function checkIfAllReady(currentState: WaitingForReadyState) {
 }
 
 function checkWhenReports(currentState: WaitingForWhenReportsState) {
-    for (const id of currentState.inSync) {
-        if (currentState.whenReports.get(id) == null) {
+    for (const ctx of currentState.inSync) {
+        if (currentState.whenReports.get(ctx) == null) {
             return;
         }
     }
 
-    const consensus = Math.min(...currentState.inSync.map(id =>
-        currentState.whenReports.get(id) ?? Infinity
+    const consensus = Math.min(...currentState.inSync.map(ctx =>
+        currentState.whenReports.get(ctx) ?? Infinity
     ));
 
     state = {
@@ -374,8 +374,8 @@ function pauseAt(when: number) {
     broadcast({ whatdo: 'pause', when });
 }
 
-fromViewers.on('reportReady', ({ id }, when) => {
-    readyWhens.set(id, when);
+fromViewers.on('reportReady', (ctx, when) => {
+    readyWhens.set(ctx, when);
 
     switch (state.mode) {
         case 'paused':
@@ -398,10 +398,10 @@ fromViewers.on('reportReady', ({ id }, when) => {
     }
 });
 
-fromViewers.on('reportWhen', ({ id }, when) => {
+fromViewers.on('reportWhen', (ctx, when) => {
     switch (state.mode) {
         case 'waitingForWhenReports':
-            state.whenReports.set(id, when);
+            state.whenReports.set(ctx, when);
             checkWhenReports(state);
             break;
 

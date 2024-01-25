@@ -1,21 +1,44 @@
 import type { Unsubscribable } from '@trpc/server/observable';
 import { render } from 'solid-js/web';
-import { ViewerApp } from './ViewerApp';
-import { onVideoEnabled, startTrpc, videoEnabled } from './trpc';
-
-const version = '_$VERSION$_';
-
-const raise = (error: Error) => { throw error; };
-const video = document.querySelector('video') ?? raise(new Error('no video?'));
-
-// const root = document.querySelector('#root');
-// if (!root) throw new Error('No root div!');
-// render(ViewerApp, root);
+import { App, VideoEnabledArgs } from './App';
+import { startTrpc } from './trpc';
+import { version } from './version';
+import { createSignal } from 'solid-js';
 
 let trpc_: undefined | ReturnType<typeof startTrpc>;
 
-videoEnabled.then(({ clientName }) => {
+let onVideoEnabled: (args: VideoEnabledArgs) => void;
+const videoEnabled = new Promise<VideoEnabledArgs>(resolve => onVideoEnabled = resolve);
+
+let onGotVideo: (video: HTMLVideoElement) => void;
+const gotVideo = new Promise<HTMLVideoElement>(resolve => onGotVideo = resolve);
+
+const [aspectRatio, setAspectRatio] = createSignal(1);
+
+render(() => <App {...{
+    onVideoEnabled,
+    onGotVideo,
+    aspectRatio,
+}} />, document.body);
+
+Promise.all([videoEnabled, gotVideo]).then(([{ useless, clientName }, video]) => {
+    console.log('Useless?', useless);
+
+    if (useless === 'decent') {
+        video.oncanplay = () => {
+            console.log('The video reports that it is ready to play');
+            if (trpc_) {
+                trpc_.ready.mutate({ when: video.currentTime });
+            }
+        };
+    }
+
+    video.onloadedmetadata = video.onloadeddata = () => {
+        setAspectRatio(video.videoWidth / video.videoHeight);
+    };
+
     let wasToldWhatDo = false;
+    let uselessTimeout: NodeJS.Timeout | undefined;
 
     const trpc = trpc_ = startTrpc();
 
@@ -64,10 +87,18 @@ videoEnabled.then(({ clientName }) => {
                     console.log(`Server says the video should be paused at ${msg.when}.`);
                     video.pause();
                     video.currentTime = msg.when;
+                    if (useless === 'useless') {
+                        // For the useless browsers, assume they will be ready after 3 seconds.
+                        clearTimeout(uselessTimeout);
+                        uselessTimeout = setTimeout(() => {
+                            trpc.ready.mutate({ when: msg.when });
+                        }, 3_000);
+                    }
                     break;
 
                 case 'pauseAndReportWhen':
                     console.log('Server says pause now and report current time');
+                    clearTimeout(uselessTimeout);
                     video.pause();
                     trpc.reportWhen.mutate({ when: video.currentTime });
                     break;
@@ -109,83 +140,3 @@ videoEnabled.then(({ clientName }) => {
         subscriptions.push(notificationSubscription);
     }
 });
-
-video.oncanplay = () => {
-    console.log('The video reports that it is ready to play');
-    if (trpc_) {
-        trpc_.ready.mutate({ when: video.currentTime });
-    }
-};
-
-// Delete the following
-
-declare global {
-    interface Window {
-        enablePlayer: () => void;
-        toggleSubtitles: () => void;
-        openFullscreen: () => void;
-    }
-}
-
-window.enablePlayer = () => {
-    const connectingMsg = document.querySelector('#connecting-msg');
-    if (connectingMsg instanceof HTMLElement) {
-        connectingMsg.style.display = 'block';
-    }
-
-    const enableButton = document.querySelector('#enable-button');
-    if (enableButton instanceof HTMLButtonElement) {
-        enableButton.style.display = 'none';
-    }
-
-    const subtitlesButton = document.querySelector('#subtitles-button');
-    if (subtitlesButton instanceof HTMLButtonElement) {
-        subtitlesButton.style.display = 'inline';
-    }
-
-    const fullscreenButton = document.querySelector('#fullscreen-button');
-    if (fullscreenButton instanceof HTMLButtonElement) {
-        fullscreenButton.style.display = 'inline';
-    }
-
-    const oldClientName = localStorage.getItem('watch_party_client_name');
-    let clientName: string | undefined;
-
-    if (oldClientName) {
-        const yes = confirm(`Would you still like to be called ${oldClientName}?`);
-        if (yes) {
-            clientName = oldClientName;
-        }
-    }
-
-    if (!clientName) {
-        let newName = prompt('What should we call you?');
-        while (!newName) {
-            newName = prompt('Sorry, please try again. Who are you?!?');
-        }
-        clientName = newName;
-    }
-
-    localStorage.setItem('watch_party_client_name', clientName);
-    const args = { clientName };
-    setTimeout(() => onVideoEnabled?.(args), 0);
-};
-
-window.toggleSubtitles = () => {
-    const track = video.textTracks[0];
-    if (track) {
-        track.mode = track.mode === 'showing' ? 'hidden' : 'showing';
-    }
-};
-
-window.openFullscreen = () => {
-    const videoWrapper = video.parentElement;
-    if (videoWrapper) {
-        videoWrapper?.requestFullscreen({ navigationUI: 'hide' });
-        videoWrapper.onkeydown = ev => {
-            if (ev.key === 'escape') {
-                document.exitFullscreen();
-            }
-        };
-    }
-};
