@@ -21,6 +21,7 @@
     "esbuild": "^0.19.11",
     "esbuild-plugin-replace": "^1.4.0",
     "esbuild-plugin-solid": "^0.5.0",
+    "solid-icons": "^1.1.0",
     "solid-js": "^1.8.11",
     "typed-emitter": "^2.1.0",
     "typescript": "^5.3.3",

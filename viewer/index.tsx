@@ -33,6 +33,7 @@ Promise.all([videoEnabled, gotVideo]).then(([{ useless, clientName }, video]) =>
         };
     }
 
+    setAspectRatio((video.videoWidth / video.videoHeight) || 1);
     video.onloadedmetadata = video.onloadeddata = () => {
         setAspectRatio(video.videoWidth / video.videoHeight);
     };

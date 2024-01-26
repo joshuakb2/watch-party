@@ -1,6 +1,8 @@
-import { Match, Show, Switch, createSignal } from "solid-js";
+import { Match, Show, Switch, createSignal, JSX } from "solid-js";
 import { startTrpc } from "./trpc";
 import { Uselessness, testWhetherUseless } from "./useless";
+import { BsFullscreen, BsFullscreenExit } from "solid-icons/bs";
+import { BiRegularCaptions } from "solid-icons/bi";
 
 export type VideoEnabledArgs = {
     useless: Uselessness;
@@ -16,7 +18,7 @@ const onResize = () => setWindowDims({
     height: window.innerHeight,
 });
 window.addEventListener('resize', onResize);
-//window.addEventListener('orientationchange', onResize);
+window.addEventListener('orientationchange', onResize);
 
 export const App = ({ onVideoEnabled, onGotVideo, aspectRatio }: {
     onVideoEnabled: (args: VideoEnabledArgs) => void;
@@ -108,8 +110,8 @@ const Player = ({ show, onGotVideo, width }: {
     const [isFullscreen, setIsFullscreen] = createSignal(false);
 
     document.onfullscreenchange = () => {
-        setIsFullscreen(document.fullscreenEnabled);
-        if (document.fullscreenEnabled && wrapper) {
+        setIsFullscreen(Boolean(document.fullscreenElement));
+        if (document.fullscreenElement && wrapper) {
             wrapper.onkeydown = ev => {
                 if (ev.key === 'escape') {
                     document.exitFullscreen();
@@ -146,9 +148,28 @@ const Player = ({ show, onGotVideo, width }: {
 
     const [isMouseMoving, setIsMouseMoving] = createSignal(false);
 
+    const commonIconStyle: JSX.CSSProperties = {
+        position: 'absolute',
+        width: '30px',
+        height: '30px',
+        bottom: '5px',
+        cursor: 'pointer',
+    };
+
+    const fullscreenIconStyle: JSX.CSSProperties = {
+        ...commonIconStyle,
+        right: '5px',
+    };
+
+    const subtitlesIconStyle: JSX.CSSProperties = {
+        ...commonIconStyle,
+        right: '40px',
+    };
+
     return <div
         ref={onGotWrapper}
         style={{
+            position: 'relative',
             'background-color': 'black',
             display: show() ? 'block' : 'none',
             width: `${width()}px`,
@@ -164,6 +185,29 @@ const Player = ({ show, onGotVideo, width }: {
             <source src='https://files.joshuabaker.me/celeste.mp4' type='video/mp4' />
             <track label='English' kind='subtitles' srclang='en' src='https://files.joshuabaker.me/faceoff.vtt' default />
         </video>
-        <Show when={isMouseMoving()}>MOUSE IS MOVING</Show>
+        <div style={{
+            position: 'absolute',
+            top: 0,
+            left: 0,
+            width: '100%',
+            height: '100%',
+            opacity: isMouseMoving() ? 1 : 0,
+            transition: 'opacity 250ms',
+        }}>
+            <div style={{
+                position: 'absolute',
+                bottom: 0,
+                width: '100%',
+                height: '60px',
+                background: 'linear-gradient(to bottom, rgba(0,0,0,0), rgba(0,0,0,0.75))',
+            }}>
+            </div>
+            <Show
+                when={isFullscreen()}
+                fallback={<BsFullscreen style={fullscreenIconStyle} onclick={toggleFullscreen} />}
+            ><BsFullscreenExit style={fullscreenIconStyle} onclick={toggleFullscreen} /></Show>
+
+            <BiRegularCaptions style={subtitlesIconStyle} onclick={toggleSubtitles} />
+        </div>
     </div>;
 };
