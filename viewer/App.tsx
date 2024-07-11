@@ -2,7 +2,7 @@ import { Match, Show, Switch, createSignal, JSX } from "solid-js";
 import { startTrpc } from "./trpc";
 import { Uselessness, testWhetherUseless } from "./useless";
 import { BsFullscreen, BsFullscreenExit } from "solid-icons/bs";
-import { BiRegularCaptions } from "solid-icons/bi";
+import { BiRegularCaptions, BiSolidCaptions } from "solid-icons/bi";
 
 export type VideoEnabledArgs = {
     useless: Uselessness;
@@ -26,7 +26,7 @@ export const App = ({ onVideoEnabled, onGotVideo, aspectRatio }: {
     aspectRatio: () => number;
 }) => {
     const [videoActive, setVideoActive] = createSignal(false);
-    const useless = testWhetherUseless('celeste.mp4');
+    const useless = testWhetherUseless('bb.mp4');
 
     const videoWidth = () => {
         return Math.min(
@@ -96,18 +96,29 @@ const Player = ({ show, onGotVideo, width }: {
 
     const gotVideo = (v: HTMLVideoElement) => {
         video = v;
+        video.addEventListener('change', () => {
+            updateAreCaptionsEnabled();
+        });
         onGotVideo(v);
+    };
+
+    const [isFullscreen, setIsFullscreen] = createSignal(false);
+    const [areCaptionsEnabled, setAreCaptionsEnabled] = createSignal(false);
+
+    const updateAreCaptionsEnabled = () => {
+        if (!video) return;
+        const track = video.textTracks[0];
+        if (!track) return;
+        setAreCaptionsEnabled(track.mode === 'showing');
     };
 
     const toggleSubtitles = () => {
         if (!video) return;
         const track = video.textTracks[0];
-        if (track) {
-            track.mode = track.mode === 'showing' ? 'hidden' : 'showing';
-        }
+        if (!track) return;
+        track.mode = areCaptionsEnabled() ? 'hidden' : 'showing';
+        setAreCaptionsEnabled(!areCaptionsEnabled());
     };
-
-    const [isFullscreen, setIsFullscreen] = createSignal(false);
 
     document.onfullscreenchange = () => {
         setIsFullscreen(Boolean(document.fullscreenElement));
@@ -182,8 +193,8 @@ const Player = ({ show, onGotVideo, width }: {
             crossorigin='anonymous'
             style={{ width: '100%', height: '100%' }}
         >
-            <source src='https://files.joshuabaker.me/celeste.mp4' type='video/mp4' />
-            <track label='English' kind='subtitles' srclang='en' src='https://files.joshuabaker.me/faceoff.vtt' default />
+            <source src='https://files.joshuabaker.me/bb.mp4' type='video/mp4' />
+            <track label='English' kind='subtitles' srclang='en' src='https://files.joshuabaker.me/bb.vtt' default />
         </video>
         <div style={{
             position: 'absolute',
@@ -200,14 +211,19 @@ const Player = ({ show, onGotVideo, width }: {
                 width: '100%',
                 height: '60px',
                 background: 'linear-gradient(to bottom, rgba(0,0,0,0), rgba(0,0,0,0.75))',
-            }}>
-            </div>
+            }} />
             <Show
                 when={isFullscreen()}
                 fallback={<BsFullscreen style={fullscreenIconStyle} onclick={toggleFullscreen} />}
-            ><BsFullscreenExit style={fullscreenIconStyle} onclick={toggleFullscreen} /></Show>
-
-            <BiRegularCaptions style={subtitlesIconStyle} onclick={toggleSubtitles} />
+            >
+                <BsFullscreenExit style={fullscreenIconStyle} onclick={toggleFullscreen} />
+            </Show>
+            <Show
+                when={areCaptionsEnabled()}
+                fallback={<BiRegularCaptions style={subtitlesIconStyle} onclick={toggleSubtitles} />}
+            >
+                <BiSolidCaptions style={subtitlesIconStyle} onclick={toggleSubtitles} />
+            </Show>
         </div>
     </div>;
 };
