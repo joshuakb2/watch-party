@@ -100,7 +100,7 @@ const Player = ({ show, onGotVideo, width }: {
     const gotVideo = (v: HTMLVideoElement) => {
         video = v;
         video.addEventListener('change', () => updateAreCaptionsEnabled());
-        video.volume = volume();
+        video.volume = volume() / 100;
         onGotVideo(v);
     };
 
@@ -126,9 +126,13 @@ const Player = ({ show, onGotVideo, width }: {
                     toggleSubtitles();
                     break;
                 case 'ArrowUp':
+                case 'NumpadAdd':
+                case 'Equal':
                     increaseVolume();
                     break;
                 case 'ArrowDown':
+                case 'NumpadSubtract':
+                case 'Minus':
                     decreaseVolume();
                     break;
             }
@@ -220,9 +224,14 @@ const Player = ({ show, onGotVideo, width }: {
         right: '40px',
     };
 
-    const volumeIconStyle: JSX.CSSProperties = {
+    const increaseVolumeIconStyle: JSX.CSSProperties = {
         ...commonIconStyle,
-        right: '40px',
+        right: '75px',
+    };
+
+    const decreaseVolumeIconStyle: JSX.CSSProperties = {
+        ...commonIconStyle,
+        right: '110px',
     };
 
     return <div
@@ -244,6 +253,9 @@ const Player = ({ show, onGotVideo, width }: {
             <source src={`https://files.joshuabaker.me/${movieFile}`} type='video/mp4' />
             <track label='English' kind='subtitles' srclang='en' src={`https://files.joshuabaker.me/${subtitlesFile}`} default={initialCaptionsEnabled} />
         </video>
+
+        <VolumeToast {...{ volume, isMouseMoving }} />
+
         <div style={{
             position: 'absolute',
             top: 0,
@@ -252,6 +264,7 @@ const Player = ({ show, onGotVideo, width }: {
             height: '100%',
             opacity: isMouseMoving() ? 1 : 0,
             transition: 'opacity 250ms',
+            'user-select': 'none',
         }}>
             <div style={{
                 position: 'absolute',
@@ -260,24 +273,26 @@ const Player = ({ show, onGotVideo, width }: {
                 height: '60px',
                 background: 'linear-gradient(to bottom, rgba(0,0,0,0), rgba(0,0,0,0.75))',
             }} />
-            <BsVolumeDown style={volumeIconStyle} onclick={decreaseVolume} />
-            <BsVolumeUp style={volumeIconStyle} onclick={increaseVolume} />
             <Show
                 when={isFullscreen()}
-                fallback={<BsFullscreen style={fullscreenIconStyle} onclick={toggleFullscreen} />}
+                fallback={<BsFullscreen style={fullscreenIconStyle} onclick={toggleFullscreen} onmousedown={preventDefault} />}
             >
-                <BsFullscreenExit style={fullscreenIconStyle} onclick={toggleFullscreen} />
+                <BsFullscreenExit style={fullscreenIconStyle} onclick={toggleFullscreen} onmousedown={preventDefault} />
             </Show>
             <Show
                 when={areCaptionsEnabled()}
-                fallback={<BiRegularCaptions style={subtitlesIconStyle} onclick={toggleSubtitles} />}
+                fallback={<BiRegularCaptions style={subtitlesIconStyle} onclick={toggleSubtitles} onmousedown={preventDefault} />}
             >
-                <BiSolidCaptions style={subtitlesIconStyle} onclick={toggleSubtitles} />
+                <BiSolidCaptions style={subtitlesIconStyle} onclick={toggleSubtitles} onmousedown={preventDefault} />
             </Show>
+            <BsVolumeUp style={increaseVolumeIconStyle} onclick={increaseVolume} onmousedown={preventDefault} />
+            <BsVolumeDown style={decreaseVolumeIconStyle} onclick={decreaseVolume} onmousedown={preventDefault} />
         </div>
-        <VolumeToast {...{ volume, isMouseMoving }} />
     </div>;
 };
+
+// With onmousedown, used to prevent text selection on double click
+const preventDefault = (ev: Event) => ev.preventDefault();
 
 type VolumeToastProps = {
     volume: Accessor<number>;
@@ -301,19 +316,14 @@ const VolumeToast = ({ volume, isMouseMoving }: VolumeToastProps) => {
 
     return <div style={{
         position: 'absolute',
-        top: 0,
-        left: 0,
-        width: '100%',
-        height: '100%',
-    }}>
-        <div style={{
-            position: 'absolute',
-            top: '5px',
-            right: '5px',
-            'background-color': 'rgba(0, 0, 0, 0.3)',
-            color: 'white',
-            opacity: shouldShowVolume() ? 1 : 0,
-            transition: 'opacity 250ms',
-        }}>Volume: {volume()}%</div>
-    </div>;
+        top: '20px',
+        right: '20px',
+        'background-color': 'rgba(0, 0, 0, 0.3)',
+        'border-radius': '20px',
+        color: 'white',
+        'font-size': 'xx-large',
+        opacity: shouldShowVolume() ? 1 : 0,
+        transition: 'opacity 250ms',
+        'user-select': 'none',
+    }}>Volume: {volume()}%</div>;
 };
