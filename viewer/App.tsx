@@ -1,4 +1,4 @@
-import { Match, Show, Switch, createSignal, JSX } from "solid-js";
+import { Match, Show, Switch, createSignal, JSX, createEffect, onCleanup } from "solid-js";
 import { startTrpc } from "./trpc";
 import { Uselessness, testWhetherUseless } from "./useless";
 import { BsFullscreen, BsFullscreenExit } from "solid-icons/bs";
@@ -106,7 +106,27 @@ const Player = ({ show, onGotVideo, width }: {
     };
 
     const [isFullscreen, setIsFullscreen] = createSignal(false);
-    const [areCaptionsEnabled, setAreCaptionsEnabled] = createSignal(false);
+    const [areCaptionsEnabled, setAreCaptionsEnabled] = createSignal(localStorage.getItem('captions') === 'yes');
+
+    createEffect(() => localStorage.setItem('captions', areCaptionsEnabled() ? 'yes' : 'no'));
+
+    createEffect(() => {
+        const listener = (ev: KeyboardEvent) => {
+            if (ev.ctrlKey || ev.altKey || ev.shiftKey) return;
+
+            switch (ev.code) {
+                case 'KeyF':
+                    toggleFullscreen();
+                    break;
+                case 'KeyC':
+                    toggleSubtitles();
+                    break;
+            }
+        };
+
+        window.addEventListener('keydown', listener);
+        onCleanup(() => window.removeEventListener('keydown', listener));
+    });
 
     const updateAreCaptionsEnabled = () => {
         if (!video) return;
