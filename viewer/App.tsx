@@ -316,12 +316,13 @@ const VolumeToast = ({ volume, isMouseMoving }: VolumeToastProps) => {
 
     return <div style={{
         position: 'absolute',
-        top: '20px',
-        right: '20px',
+        top: '10px',
+        right: '10px',
         'background-color': 'rgba(0, 0, 0, 0.3)',
-        'border-radius': '20px',
         color: 'white',
         'font-size': 'xx-large',
+        'border-radius': '20px',
+        padding: '10px 20px',
         opacity: shouldShowVolume() ? 1 : 0,
         transition: 'opacity 250ms',
         'user-select': 'none',
