@@ -20,13 +20,16 @@ const onResize = () => setWindowDims({
 window.addEventListener('resize', onResize);
 window.addEventListener('orientationchange', onResize);
 
+const movieFile = 'tv_glow.mp4';
+const subtitlesFile = 'tv_glow.vtt';
+
 export const App = ({ onVideoEnabled, onGotVideo, aspectRatio }: {
     onVideoEnabled: (args: VideoEnabledArgs) => void;
     onGotVideo: (video: HTMLVideoElement) => void;
     aspectRatio: () => number;
 }) => {
     const [videoActive, setVideoActive] = createSignal(false);
-    const useless = testWhetherUseless('bb.mp4');
+    const useless = testWhetherUseless(movieFile);
 
     const videoWidth = () => {
         return Math.min(
@@ -193,8 +196,8 @@ const Player = ({ show, onGotVideo, width }: {
             crossorigin='anonymous'
             style={{ width: '100%', height: '100%' }}
         >
-            <source src='https://files.joshuabaker.me/bb.mp4' type='video/mp4' />
-            <track label='English' kind='subtitles' srclang='en' src='https://files.joshuabaker.me/bb.vtt' default />
+            <source src={`https://files.joshuabaker.me/${movieFile}`} type='video/mp4' />
+            <track label='English' kind='subtitles' srclang='en' src={`https://files.joshuabaker.me/${subtitlesFile}`} default />
         </video>
         <div style={{
             position: 'absolute',
