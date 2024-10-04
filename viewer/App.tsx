@@ -217,7 +217,7 @@ const Player = ({ show, onGotVideo, width }: {
             style={{ width: '100%', height: '100%' }}
         >
             <source src={`https://files.joshuabaker.me/${movieFile}`} type='video/mp4' />
-            <track label='English' kind='subtitles' srclang='en' src={`https://files.joshuabaker.me/${subtitlesFile}`} default />
+            <track label='English' kind='subtitles' srclang='en' src={`https://files.joshuabaker.me/${subtitlesFile}`} default={areCaptionsEnabled()} />
         </video>
         <div style={{
             position: 'absolute',
