@@ -1,7 +1,7 @@
-import { Match, Show, Switch, createSignal, JSX, createEffect, onCleanup } from "solid-js";
+import { Match, Show, Switch, createSignal, JSX, createEffect, onCleanup, Accessor } from "solid-js";
 import { startTrpc } from "./trpc";
 import { Uselessness, testWhetherUseless } from "./useless";
-import { BsFullscreen, BsFullscreenExit } from "solid-icons/bs";
+import { BsFullscreen, BsFullscreenExit, BsVolumeDown, BsVolumeUp } from "solid-icons/bs";
 import { BiRegularCaptions, BiSolidCaptions } from "solid-icons/bi";
 
 export type VideoEnabledArgs = {
@@ -99,17 +99,21 @@ const Player = ({ show, onGotVideo, width }: {
 
     const gotVideo = (v: HTMLVideoElement) => {
         video = v;
-        video.addEventListener('change', () => {
-            updateAreCaptionsEnabled();
-        });
+        video.addEventListener('change', () => updateAreCaptionsEnabled());
+        video.volume = volume();
         onGotVideo(v);
     };
 
     const [isFullscreen, setIsFullscreen] = createSignal(false);
-    const [areCaptionsEnabled, setAreCaptionsEnabled] = createSignal(localStorage.getItem('captions') === 'yes');
+    const initialCaptionsEnabled = localStorage.getItem('captions') === 'yes';
+    const [areCaptionsEnabled, setAreCaptionsEnabled] = createSignal(initialCaptionsEnabled);
+    const [volume, setVolume] = createSignal(+(localStorage.getItem('volume') ?? '100'));
 
+    // Remember settings from last time
     createEffect(() => localStorage.setItem('captions', areCaptionsEnabled() ? 'yes' : 'no'));
+    createEffect(() => localStorage.setItem('volume', `${volume()}`));
 
+    // Register keydown event listener
     createEffect(() => {
         const listener = (ev: KeyboardEvent) => {
             if (ev.ctrlKey || ev.altKey || ev.shiftKey) return;
@@ -121,12 +125,28 @@ const Player = ({ show, onGotVideo, width }: {
                 case 'KeyC':
                     toggleSubtitles();
                     break;
+                case 'ArrowUp':
+                    increaseVolume();
+                    break;
+                case 'ArrowDown':
+                    decreaseVolume();
+                    break;
             }
         };
 
         window.addEventListener('keydown', listener);
         onCleanup(() => window.removeEventListener('keydown', listener));
     });
+
+    // Apply volume change
+    createEffect(() => {
+        const v = volume();
+        if (!video) return;
+        video.volume = v / 100;
+    });
+
+    const increaseVolume = () => setVolume(Math.min(100, volume() + 5));
+    const decreaseVolume = () => setVolume(Math.max(0, volume() - 5));
 
     const updateAreCaptionsEnabled = () => {
         if (!video) return;
@@ -200,6 +220,11 @@ const Player = ({ show, onGotVideo, width }: {
         right: '40px',
     };
 
+    const volumeIconStyle: JSX.CSSProperties = {
+        ...commonIconStyle,
+        right: '40px',
+    };
+
     return <div
         ref={onGotWrapper}
         style={{
@@ -217,7 +242,7 @@ const Player = ({ show, onGotVideo, width }: {
             style={{ width: '100%', height: '100%' }}
         >
             <source src={`https://files.joshuabaker.me/${movieFile}`} type='video/mp4' />
-            <track label='English' kind='subtitles' srclang='en' src={`https://files.joshuabaker.me/${subtitlesFile}`} default={areCaptionsEnabled()} />
+            <track label='English' kind='subtitles' srclang='en' src={`https://files.joshuabaker.me/${subtitlesFile}`} default={initialCaptionsEnabled} />
         </video>
         <div style={{
             position: 'absolute',
@@ -235,6 +260,8 @@ const Player = ({ show, onGotVideo, width }: {
                 height: '60px',
                 background: 'linear-gradient(to bottom, rgba(0,0,0,0), rgba(0,0,0,0.75))',
             }} />
+            <BsVolumeDown style={volumeIconStyle} onclick={decreaseVolume} />
+            <BsVolumeUp style={volumeIconStyle} onclick={increaseVolume} />
             <Show
                 when={isFullscreen()}
                 fallback={<BsFullscreen style={fullscreenIconStyle} onclick={toggleFullscreen} />}
@@ -248,5 +275,45 @@ const Player = ({ show, onGotVideo, width }: {
                 <BiSolidCaptions style={subtitlesIconStyle} onclick={toggleSubtitles} />
             </Show>
         </div>
+        <VolumeToast {...{ volume, isMouseMoving }} />
+    </div>;
+};
+
+type VolumeToastProps = {
+    volume: Accessor<number>;
+    isMouseMoving: Accessor<boolean>;
+};
+
+const VolumeToast = ({ volume, isMouseMoving }: VolumeToastProps) => {
+    const [volumeChangedRecently, setVolumeChangedRecently] = createSignal(false);
+
+    createEffect(() => {
+        volume();
+        setVolumeChangedRecently(true);
+        const timeout = setTimeout(
+            () => setVolumeChangedRecently(false),
+            2000,
+        );
+        onCleanup(() => clearTimeout(timeout));
+    });
+
+    const shouldShowVolume = () => volumeChangedRecently() || isMouseMoving();
+
+    return <div style={{
+        position: 'absolute',
+        top: 0,
+        left: 0,
+        width: '100%',
+        height: '100%',
+    }}>
+        <div style={{
+            position: 'absolute',
+            top: '5px',
+            right: '5px',
+            'background-color': 'rgba(0, 0, 0, 0.3)',
+            color: 'white',
+            opacity: shouldShowVolume() ? 1 : 0,
+            transition: 'opacity 250ms',
+        }}>Volume: {volume()}%</div>
     </div>;
 };
