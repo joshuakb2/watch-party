@@ -5,16 +5,14 @@ import readline from 'readline';
 import { inspect } from 'util';
 import { startServer, stopServer } from './trpcServer';
 import { ViewerContext, broadcast, fromViewers, getViewers, kick, notify, unicast } from './viewerTrpc';
-import { installCliCommandHandler } from './controllerTrpc';
+import { broadcastState, unicastState, fromControllers } from './controllerTrpc';
+import { assertNever, PlayingState, ServerState, serverStateToJson, WaitingForReadyState, WaitingForWhenReportsState } from './types';
 
 const epsilon = 0.1;
 
 async function main() {
     startServer();
-
-    installCliCommandHandler(async input => {
-        return await handleCommand(input);
-    });
+    registerControllerHandlers();
 
     let cli = readline.createInterface(process.stdin, process.stdout);
 
@@ -23,6 +21,43 @@ async function main() {
         const response = await handleCommand(nextInput, cli);
         cli.write(`${response ?? ''}\n`);
     }
+}
+
+function registerControllerHandlers() {
+    fromControllers.on('pause', when => {
+        const state = getState();
+
+        if (when != null) {
+            pauseAt(when);
+        }
+        else if (state.mode === 'playing') {
+            pauseAndReportWhen(state);
+        }
+    });
+
+    fromControllers.on('rewind', seconds => {
+        const state = getState();
+
+        switch (state.mode) {
+            case 'paused':
+            case 'waitingForReady': {
+                const newWhen = state.when - seconds;
+                pauseAt(newWhen);
+            }
+
+            case 'init':
+            case 'waitingForWhenReports':
+            case 'playing':
+                break;
+
+            default:
+                return assertNever(state);
+        }
+    });
+
+    fromControllers.on('play', playIfPossible);
+
+    fromControllers.on('newController', id => unicastState(id, serverStateToJson(getState())));
 }
 
 function splitArgs(input: string) {
@@ -84,19 +119,21 @@ async function printStatus() {
     const n = getViewers().length;
     let response = '';
     response += `There ${n === 1 ? 'is' : 'are'} ${n} ${n === 1 ? 'viewer' : 'viewers'} connected.\n`;
-    response += `Status: ${inspect(state)}\n`;
+    response += `Status: ${inspect(getState())}\n`;
     response += `Viewers: ${inspect(getViewers())}\n`;
     response += `ReadyWhens: ${inspect(readyWhens)}\n`;
     return response;
 }
 
 async function cliPlay() {
-    const stateRef = state;
-    if (stateRef.mode === 'playing') {
+    let state = getState();
+    if (state.mode === 'playing') {
         return `Already playing\n`;
     }
 
     playIfPossible();
+    state = getState();
+
     if (state.mode === 'playing') {
         return `Now playing.\n`;
     }
@@ -106,9 +143,11 @@ async function cliPlay() {
 }
 
 async function cliPause(_cli?: readline.Interface, whenStr?: string) {
+    const state = getState();
+
     if (typeof whenStr !== 'string') {
         if (state.mode === 'playing') {
-            pauseAndReportWhen();
+            pauseAndReportWhen(state);
             return `Instructing viewers to pause\n`;
         }
         else {
@@ -138,6 +177,8 @@ async function cliRewind(_cli?: readline.Interface, secondsStr?: string) {
     if (isNaN(seconds)) {
         return `Invalid number given.\n`;
     }
+
+    const state = getState();
 
     switch (state.mode) {
         case 'paused':
@@ -182,64 +223,58 @@ async function quit(cli?: readline.Interface) {
 
 const readyWhens = new Map<ViewerContext, number | null>();
 
-type InitMode = {
-    mode: 'init';
-};
+const { getState, setState } = (() => {
+    let state: ServerState = { mode: 'init' };
 
-type PausedState = {
-    mode: 'paused';
-    when: number;
-};
+    const getState = () => state;
+    const setState = (newState: ServerState) => {
+        state = newState;
+        queueBroadcastState();
+    };
 
-type WaitingForReadyState = {
-    mode: 'waitingForReady';
-    when: number;
-};
+    let promise: Promise<void> | undefined;
 
-type WaitingForWhenReportsState = {
-    mode: 'waitingForWhenReports';
-    inSync: ViewerContext[];
-    whenReports: Map<ViewerContext, number>;
-};
+    const queueBroadcastState = () => {
+        if (!promise) {
+            promise = Promise.resolve().then(() => {
+                broadcastState(serverStateToJson(state));
+                promise = undefined;
+            });
+        }
+    };
 
-type PlayingState = {
-    mode: 'playing';
-};
+    return { getState, setState };
+})();
 
-type ServerState =
-    | InitMode
-    | PausedState
-    | WaitingForReadyState
-    | WaitingForWhenReportsState
-    | PlayingState;
 
-let state: ServerState = { mode: 'init' };
-
-function pauseAndReportWhen() {
+function pauseAndReportWhen(currentState: PlayingState) {
     broadcast({ whatdo: 'pauseAndReportWhen' });
-    state = {
+    setState({
         mode: 'waitingForWhenReports',
         inSync: [...readyWhens.keys()],
         whenReports: new Map(),
-    };
+        lastReportedWhen: currentState.lastReportedWhen,
+    });
 }
 
 fromViewers.on('join', (ctx, reconnecting) => {
+    const state = getState();
+
     switch (state.mode) {
         case 'init':
-            state = {
+            setState({
                 mode: 'paused',
                 when: reconnecting?.when ?? 0,
-            };
+            });
             broadcast({ whatdo: 'pause', when: reconnecting?.when ?? 0 });
             break;
 
         case 'paused':
             unicast(ctx, { whatdo: 'pause', when: state.when });
-            state = {
+            setState({
                 mode: 'waitingForReady',
                 when: state.when,
-            };
+            });
             break;
 
         case 'waitingForReady':
@@ -251,7 +286,7 @@ fromViewers.on('join', (ctx, reconnecting) => {
             break;
 
         case 'playing':
-            pauseAndReportWhen();
+            pauseAndReportWhen(state);
             break;
 
         default:
@@ -264,10 +299,31 @@ fromViewers.on('join', (ctx, reconnecting) => {
 });
 
 fromViewers.on('leave', ctx => {
+    const state = getState();
+
     readyWhens.delete(ctx);
 
     if (getViewers().length === 0) {
-        state = { mode: 'init' };
+        switch (state.mode) {
+            case 'init':
+                setState({ mode: 'init' });
+                break;
+
+            case 'paused':
+                break;
+
+            case 'waitingForReady':
+                setState({ mode: 'paused', when: state.when });
+                break;
+
+            case 'waitingForWhenReports':
+            case 'playing':
+                setState({ mode: 'paused', when: state.lastReportedWhen });
+                break;
+
+            default:
+                return assertNever(state);
+        }
         return;
     }
 
@@ -303,10 +359,10 @@ function checkIfAllReady(currentState: WaitingForReadyState) {
     }
 
     if (allReady) {
-        state = {
+        setState({
             mode: 'paused',
             when: currentState.when,
-        };
+        });
     }
 }
 
@@ -321,10 +377,10 @@ function checkWhenReports(currentState: WaitingForWhenReportsState) {
         currentState.whenReports.get(ctx) ?? Infinity
     ));
 
-    state = {
+    setState({
         mode: 'paused',
         when: consensus,
-    };
+    });
     broadcast({ whatdo: 'pause', when: consensus });
 }
 
@@ -333,13 +389,22 @@ fromViewers.on('play', () => {
 });
 
 function playIfPossible() {
+    const state = getState();
+
     switch (state.mode) {
-        case 'paused':
+        case 'paused': {
             if (getViewers().length === 0) break;
 
-            state = { mode: 'playing' };
+            const { when } = state;
+
+            setState({
+                mode: 'playing',
+                whenReports: new Map(getViewers().map(ctx => [ctx, when] as const)),
+                lastReportedWhen: when,
+            });
             broadcast({ whatdo: 'play' });
             break;
+        }
 
         case 'init':
         case 'waitingForReady':
@@ -353,6 +418,8 @@ function playIfPossible() {
 }
 
 fromViewers.on('pause', when => {
+    const state = getState();
+
     switch (state.mode) {
         case 'init':
         case 'playing':
@@ -370,17 +437,24 @@ fromViewers.on('pause', when => {
 });
 
 function pauseAt(when: number) {
-    state = { mode: 'waitingForReady', when };
-    broadcast({ whatdo: 'pause', when });
+    if (getViewers().length === 0) {
+        setState({ mode: 'paused', when });
+    }
+    else {
+        setState({ mode: 'waitingForReady', when });
+        broadcast({ whatdo: 'pause', when });
+    }
 }
 
 fromViewers.on('reportReady', (ctx, when) => {
+    const state = getState();
+
     readyWhens.set(ctx, when);
 
     switch (state.mode) {
         case 'paused':
             if (Math.abs(when - state.when) > epsilon) {
-                state = { mode: 'waitingForReady', when: state.when };
+                setState({ mode: 'waitingForReady', when: state.when });
             }
             break;
 
@@ -399,27 +473,30 @@ fromViewers.on('reportReady', (ctx, when) => {
 });
 
 fromViewers.on('reportWhen', (ctx, when) => {
+    const state = getState();
+
     switch (state.mode) {
         case 'waitingForWhenReports':
             state.whenReports.set(ctx, when);
+            setState(state);
             checkWhenReports(state);
+            break;
+
+        case 'playing':
+            state.whenReports.set(ctx, when);
+            state.lastReportedWhen = Math.min(...state.whenReports.values());
+            setState(state);
             break;
 
         case 'init':
         case 'paused':
         case 'waitingForReady':
-        case 'playing':
             break;
 
         default:
             return assertNever(state);
     }
 });
-
-function assertNever(never: never): never {
-    void never;
-    throw new Error('This should never happen');
-}
 
 main().catch(err => {
     console.error(`Unexpected error: ${err}`);

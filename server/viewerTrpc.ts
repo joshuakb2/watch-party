@@ -33,12 +33,6 @@ type EventsFromViewers = {
 
 export const fromViewers = new EventEmitter() as TypedEventEmitter<EventsFromViewers>;
 
-type EventsFromControllers = {
-    cliCommand: (cmd: string) => Promise<string>;
-};
-
-export const fromControllers = new EventEmitter() as TypedEventEmitter<EventsFromControllers>;
-
 const desiredReceivers = new Map<ViewerContext, {
     ws: ws.WebSocket;
     observer: Observer<Desired, unknown>;
@@ -114,9 +108,21 @@ class ViewerContext {
             return this.id;
         }
     }
+
+    toJSON(): ViewerContextJson {
+        return {
+            id: this.id,
+            name: this.name,
+        };
+    }
 }
 
 export type { ViewerContext };
+
+export type ViewerContextJson = {
+    id: string;
+    name: string | null;
+};
 
 export const createViewerContext = async (opts: CreateWSSContextFnOptions) => {
     return new ViewerContext(opts.res);

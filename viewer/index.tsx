@@ -41,8 +41,21 @@ Promise.all([videoEnabled, gotVideo]).then(([{ useless, clientName }, video]) =>
     let wasToldWhatDo = false;
     let uselessTimeout: NodeJS.Timeout | undefined;
 
-    const trpc = trpc_ = startTrpc();
+    let periodicallyReportWhenTimeout: NodeJS.Timeout | null = null;
+    const periodicallyReportWhen = (enable: boolean) => {
+        if (enable && !periodicallyReportWhenTimeout) {
+            periodicallyReportWhenTimeout = setInterval(
+                () => trpc_?.reportWhen.mutate({ when: video.currentTime }),
+                30_000,
+            );
+        }
+        else if (!enable && periodicallyReportWhenTimeout) {
+            clearInterval(periodicallyReportWhenTimeout);
+            periodicallyReportWhenTimeout = null;
+        }
+    }
 
+    const trpc = trpc_ = startTrpc();
     const subscriptions: Unsubscribable[] = [];
 
     const desiredSubscription = trpc.desired.subscribe(null, {
@@ -77,6 +90,13 @@ Promise.all([videoEnabled, gotVideo]).then(([{ useless, clientName }, video]) =>
         },
         onData: msg => {
             wasToldWhatDo = true;
+
+            if (msg.whatdo === 'play') {
+                periodicallyReportWhen(true);
+            }
+            else {
+                periodicallyReportWhen(false);
+            }
 
             switch (msg.whatdo) {
                 case 'play':
