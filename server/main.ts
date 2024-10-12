@@ -306,7 +306,6 @@ fromViewers.on('leave', ctx => {
     if (getViewers().length === 0) {
         switch (state.mode) {
             case 'init':
-                setState({ mode: 'init' });
                 break;
 
             case 'paused':
@@ -330,7 +329,11 @@ fromViewers.on('leave', ctx => {
     switch (state.mode) {
         case 'init':
         case 'paused':
+            break;
+
         case 'playing':
+            state.whenReports.delete(ctx);
+            setState(state);
             break;
 
         case 'waitingForReady':
@@ -338,6 +341,8 @@ fromViewers.on('leave', ctx => {
             break;
 
         case 'waitingForWhenReports':
+            state.whenReports.delete(ctx);
+            setState(state);
             checkWhenReports(state);
             break;
 
