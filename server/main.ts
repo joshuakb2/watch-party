@@ -4,7 +4,7 @@ import '@total-typescript/ts-reset/filter-boolean';
 import readline from 'readline';
 import { inspect } from 'util';
 import { startServer, stopServer } from './trpcServer';
-import { ViewerContext, broadcast, fromViewers, getViewers, kick, notify, unicast } from './viewerTrpc';
+import { ViewerContext, ViewerStatus, broadcast, fromViewers, getViewers, kick, notify, unicast } from './viewerTrpc';
 import { broadcastState, unicastState, fromControllers } from './controllerTrpc';
 import { assertNever, PlayingState, ServerState, serverStateToJson, WaitingForReadyState, WaitingForWhenReportsState } from './types';
 
@@ -246,6 +246,34 @@ const { getState, setState } = (() => {
     return { getState, setState };
 })();
 
+const { getViewerStatuses, setViewerStatus, deleteViewerStatus } = (() => {
+    const statuses = new Map<ViewerContext, ViewerStatus>();
+
+    const getViewerStatuses = () => statuses;
+
+    const setViewerStatus = (ctx: ViewerContext, status: ViewerStatus) => {
+        statuses.set(ctx, status);
+        queueBroadcastStatuses();
+    };
+
+    const deleteViewerStatus = (ctx: ViewerContext) => {
+        statuses.delete(ctx);
+        queueBroadcastStatuses();
+    };
+
+    let promise: Promise<void> | undefined;
+
+    const queueBroadcastStatuses = () => {
+        if (!promise) {
+            promise = Promise.resolve().then(() => {
+                broadcastStatuses([...statuses].map(([ctx, status]) => [ctx.toJSON(), status]));
+                promise = undefined;
+            });
+        }
+    };
+
+    return { getViewerStatuses, setViewerStatus, deleteViewerStatus };
+})();
 
 function pauseAndReportWhen(currentState: PlayingState) {
     broadcast({ whatdo: 'pauseAndReportWhen' });
@@ -488,11 +516,6 @@ fromViewers.on('reportWhen', (ctx, when) => {
             break;
 
         case 'playing':
-            state.whenReports.set(ctx, when);
-            state.lastReportedWhen = Math.min(...state.whenReports.values());
-            setState(state);
-            break;
-
         case 'init':
         case 'paused':
         case 'waitingForReady':
@@ -501,6 +524,10 @@ fromViewers.on('reportWhen', (ctx, when) => {
         default:
             return assertNever(state);
     }
+});
+
+fromViewers.on('checkIn', (ctx, status) => {
+    setViewerStatus(ctx, status);
 });
 
 main().catch(err => {

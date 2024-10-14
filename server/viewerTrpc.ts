@@ -29,6 +29,7 @@ type EventsFromViewers = {
     pause: (when: number) => void;
     reportReady: (ctx: ViewerContext, when: number) => void;
     reportWhen: (ctx: ViewerContext, when: number) => void;
+    checkIn: (ctx: ViewerContext, status: ViewerStatus) => void;
 };
 
 export const fromViewers = new EventEmitter() as TypedEventEmitter<EventsFromViewers>;
@@ -128,6 +129,13 @@ export const createViewerContext = async (opts: CreateWSSContextFnOptions) => {
     return new ViewerContext(opts.res);
 };
 
+const viewerStatusParser = z.object({
+    state: z.enum(['playing', 'paused']),
+    when: z.number(),
+});
+
+export type ViewerStatus = z.infer<typeof viewerStatusParser>;
+
 const t = initTRPC.context<typeof createViewerContext>().create();
 const router = t.router;
 
@@ -171,6 +179,12 @@ export const viewerRouter = router({
         .mutation(req => {
             console.log(`reportWhen at ${req.input.when} from ${req.ctx}`);
             fromViewers.emit('reportWhen', req.ctx, req.input.when);
+        }),
+
+    checkIn: t.procedure
+        .input(viewerStatusParser)
+        .mutation(req => {
+            console.log(`checkIn from ${req.ctx}: ${JSON.stringify(req.input)}`);
         }),
 
     desired: t.procedure

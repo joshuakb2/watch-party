@@ -26,21 +26,16 @@ type WaitingForWhenReportsState_<json extends boolean, ctx = Jsonable<ViewerCont
 export type WaitingForWhenReportsState = WaitingForWhenReportsState_<false>;
 export type WaitingForWhenReportsStateJson = WaitingForWhenReportsState_<true>;
 
-type PlayingState_<json extends boolean, ctx = Jsonable<ViewerContext, ViewerContextJson, json>> = {
+export type PlayingState = {
     mode: 'playing';
-    whenReports: Jsonable<Map<ctx, number>, [ctx, number][], json>;
-    lastReportedWhen: number;
 };
-
-export type PlayingState = PlayingState_<false>;
-export type PlayingStateJson = PlayingState_<true>;
 
 type ServerState_<json extends boolean> =
     | InitMode
     | PausedState
     | WaitingForReadyState
     | WaitingForWhenReportsState_<json>
-    | PlayingState_<json>;
+    | PlayingState;
 
 export type ServerState = ServerState_<false>;
 export type ServerStateJson = ServerState_<true>;
@@ -50,18 +45,13 @@ export const serverStateToJson = (state: ServerState): ServerStateJson => {
         case 'init':
         case 'paused':
         case 'waitingForReady':
+        case 'playing':
             return state;
 
         case 'waitingForWhenReports':
             return {
                 ...state,
                 inSync: state.inSync.map(ctx => ctx.toJSON()),
-                whenReports: [...state.whenReports].map(([ctx, when]) => [ctx.toJSON(), when]),
-            };
-
-        case 'playing':
-            return {
-                ...state,
                 whenReports: [...state.whenReports].map(([ctx, when]) => [ctx.toJSON(), when]),
             };
 
